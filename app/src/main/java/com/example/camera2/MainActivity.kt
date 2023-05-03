@@ -18,13 +18,30 @@ import android.util.Size
 import android.util.SparseIntArray
 import android.view.*
 import android.view.TextureView.SurfaceTextureListener
+import android.widget.Button
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
+import com.google.android.gms.tasks.OnFailureListener
+import com.google.android.gms.tasks.OnSuccessListener
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.face.Face
+import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetector
+import com.google.mlkit.vision.face.FaceDetectorOptions
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.lang.Long
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.Array
+import kotlin.Boolean
+import kotlin.ByteArray
+import kotlin.Comparator
+import kotlin.Exception
+import kotlin.Int
+import kotlin.String
+import kotlin.arrayOf
 
 
 class MainActivity : Activity() {
@@ -40,6 +57,8 @@ class MainActivity : Activity() {
     private var mCaptureRequestBuilder: CaptureRequest.Builder? = null
     private var mCaptureRequest: CaptureRequest? = null
     private var mCameraCaptureSession: CameraCaptureSession? = null
+    private var mImage2: Image? = null
+    private var mFaceButton: Button? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -50,7 +69,57 @@ class MainActivity : Activity() {
         )
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         setContentView(R.layout.activity_main)
+        mFaceButton = findViewById(R.id.button_face);
+        mFaceButton?.setOnClickListener(object : View.OnClickListener {
+            override fun onClick(view: View?) {
+                runFaceContourDetection(mImage2!!)
+            }
+        })
         mTextureView = findViewById<View>(R.id.textureView) as TextureView
+    }
+    private fun runFaceContourDetection(image: Image) {
+        val image: InputImage = InputImage.fromMediaImage(mImage2!!, 0)
+        val options: FaceDetectorOptions = FaceDetectorOptions.Builder()
+            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
+            .build()
+        mFaceButton!!.isEnabled = false
+        val detector: FaceDetector = FaceDetection.getClient(options)
+        detector.process(image)
+            .addOnSuccessListener(
+                object : OnSuccessListener<List<Face?>?> {
+                    override fun onSuccess(faces: List<Face?>?) {
+                        mFaceButton!!.isEnabled = true
+                        processFaceContourDetectionResult(faces)
+                    }
+                })
+            .addOnFailureListener(
+                object : OnFailureListener {
+                    override fun onFailure(e: Exception) {
+                        // Task failed with an exception
+                        mFaceButton!!.isEnabled = true
+                        e.printStackTrace()
+                    }
+                })
+    }
+
+    private fun processFaceContourDetectionResult(faces: List<Face>) {
+        // Task completed successfully
+        if (faces.size == 0) {
+            showToast("No face found")
+            return
+        }
+        mGraphicOverlay.clear()
+        for (i in faces.indices) {
+            val face = faces[i]
+            val faceGraphic = FaceContourGraphic(mGraphicOverlay)
+            mGraphicOverlay.add(faceGraphic)
+            faceGraphic.updateFace(face)
+        }
+    }
+
+    private fun showToast(message: String) {
+        Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
     }
 
     override fun onResume() {
@@ -119,6 +188,7 @@ class MainActivity : Activity() {
                 ) { o1, o2 -> o1!!.width * o1.height - o2!!.width * o2.height }
                 //此ImageReader用于拍照所需
                 setupImageReader()
+
                 mCameraId = cameraId
                 Log.i(TAG, "-->width:$width height:$height-->setUpCamera-->mPreviewSize:$mPreviewSize-->mCaptureSize:$mCaptureSize")
 
@@ -146,7 +216,7 @@ class MainActivity : Activity() {
         return if (sizeList.size > 0) {
             Collections.min(sizeList, object : Comparator<Size?> {
                 override fun compare(p0: Size?, p1: Size?): Int {
-                    return java.lang.Long.signum((p0!!.width * p0.height - p1!!.width * p1.height).toLong())
+                    return Long.signum((p0!!.width * p0.height - p1!!.width * p1.height).toLong())
                 }
             })
         } else sizeMap[0]
@@ -193,9 +263,11 @@ class MainActivity : Activity() {
         mSurfaceTexture!!.setDefaultBufferSize(mPreviewSize!!.width, mPreviewSize!!.height)
         val previewSurface = Surface(mSurfaceTexture)
         try {
+            Log.d("test","start Preview")
             mCaptureRequestBuilder =
                 mCameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
             mCaptureRequestBuilder!!.addTarget(previewSurface)
+            mCaptureRequestBuilder!!.addTarget(mImageReader!!.surface)
             mCameraDevice!!.createCaptureSession(
                 Arrays.asList(
                     previewSurface,
@@ -265,7 +337,7 @@ class MainActivity : Activity() {
             val mCaptureBuilder =
                 mCameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             val rotation = windowManager.defaultDisplay.rotation
-            mCaptureBuilder.addTarget(mImageReader!!.surface)
+            // mCaptureBuilder.addTarget(mImageReader!!.surface)
             mCaptureBuilder.set(
                 CaptureRequest.JPEG_ORIENTATION,
                 ORIENTATION[rotation]
@@ -316,18 +388,31 @@ class MainActivity : Activity() {
         }
     }
 
+//    private final ImageReader.OnImageAvailableListener  listener = new ImageReader.OnImageAvailableListener() {
+//        @Override
+//        public void onImageAvailable(ImageReader imageReader) {
+//
+//        }
+//    };
     private fun setupImageReader() {
         //2代表ImageReader中最多可以获取两帧图像流
         mImageReader = ImageReader.newInstance(
             mCaptureSize!!.width, mCaptureSize!!.height,
-            ImageFormat.JPEG, 2
+            ImageFormat.JPEG, 2  // YUV_420_888, 2
         )
         mImageReader!!.setOnImageAvailableListener({ reader ->
-            mCameraHandler!!.post(
-                ImageSaver(
-                    reader.acquireNextImage()
-                )
-            )
+            mImage2 = reader.acquireNextImage() // img -> bitmap
+           // Log.d("test", "next img")
+
+
+
+            mImage2!!.close()
+//            mCameraHandler!!.post(
+//                test
+//                ImageSaver(
+//                    reader.acquireNextImage()
+//                )
+//            )
         }, mCameraHandler)
     }
 
@@ -343,6 +428,7 @@ class MainActivity : Activity() {
             }
             val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss").format(Date())
             val fileName = path + "IMG_" + timeStamp + ".jpg"
+            Log.d("test", "image saved"+fileName)
             var fos: FileOutputStream? = null
             try {
                 fos = FileOutputStream(fileName)

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Camera2</string>
+    <string name="find_face_contour_button">Find face contour</string>
 </resources>
