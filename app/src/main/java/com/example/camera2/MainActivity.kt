@@ -59,6 +59,7 @@ class MainActivity : Activity() {
     private var mCameraCaptureSession: CameraCaptureSession? = null
     private var mImage2: Image? = null
     private var mFaceButton: Button? = null
+    private val mGraphicOverlay: GraphicOverlay? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -90,7 +91,7 @@ class MainActivity : Activity() {
                 object : OnSuccessListener<List<Face?>?> {
                     override fun onSuccess(faces: List<Face?>?) {
                         mFaceButton!!.isEnabled = true
-                        processFaceContourDetectionResult(faces)
+                        processFaceContourDetectionResult(faces as List<Face>)
                     }
                 })
             .addOnFailureListener(
@@ -109,11 +110,11 @@ class MainActivity : Activity() {
             showToast("No face found")
             return
         }
-        mGraphicOverlay.clear()
+        mGraphicOverlay?.clear()
         for (i in faces.indices) {
             val face = faces[i]
             val faceGraphic = FaceContourGraphic(mGraphicOverlay)
-            mGraphicOverlay.add(faceGraphic)
+            mGraphicOverlay?.add(faceGraphic)
             faceGraphic.updateFace(face)
         }
     }
