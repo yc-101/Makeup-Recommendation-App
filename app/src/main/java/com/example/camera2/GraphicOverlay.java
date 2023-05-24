@@ -18,6 +18,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.hardware.camera2.CameraCharacteristics;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.View;
 
 import java.util.HashSet;
@@ -140,6 +141,7 @@ public class GraphicOverlay extends View {
      * Adds a graphic to the overlay.
      */
     public void add(Graphic graphic) {
+        Log.d("test", "added graphic");
         synchronized (lock) {
             graphics.add(graphic);
         }

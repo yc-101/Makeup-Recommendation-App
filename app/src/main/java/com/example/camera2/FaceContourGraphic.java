@@ -4,6 +4,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PointF;
+import android.util.Log;
 
 import com.google.mlkit.vision.face.Face;
 import com.google.mlkit.vision.face.FaceContour;
@@ -57,6 +58,7 @@ public class FaceContourGraphic extends GraphicOverlay.Graphic {
     public void updateFace(Face face) {
         this.face = face;
         postInvalidate();
+        Log.d("test", "updateFace");
     }
 
     /** Draws the face annotations for position on the supplied canvas. */

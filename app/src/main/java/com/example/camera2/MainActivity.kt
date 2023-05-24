@@ -21,13 +21,8 @@ import android.view.TextureView.SurfaceTextureListener
 import android.widget.Button
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
-import com.google.android.gms.tasks.OnFailureListener
-import com.google.android.gms.tasks.OnSuccessListener
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.face.Face
-import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetector
-import com.google.mlkit.vision.face.FaceDetectorOptions
+import com.google.mlkit.vision.face.*
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -38,10 +33,10 @@ import kotlin.Array
 import kotlin.Boolean
 import kotlin.ByteArray
 import kotlin.Comparator
-import kotlin.Exception
 import kotlin.Int
 import kotlin.String
 import kotlin.arrayOf
+import kotlin.let
 
 
 class MainActivity : Activity() {
@@ -59,17 +54,20 @@ class MainActivity : Activity() {
     private var mCameraCaptureSession: CameraCaptureSession? = null
     private var mImage2: Image? = null
     private var mFaceButton: Button? = null
-    private val mGraphicOverlay: GraphicOverlay? = null
+    private var mGraphicOverlay: GraphicOverlay? = null
+    private var isDetecting = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "onCreate")
 
         //全屏无状态栏
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
+//        window.setFlags(
+//            WindowManager.LayoutParams.FLAG_FULLSCREEN,
+//            WindowManager.LayoutParams.FLAG_FULLSCREEN
+//        )
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         setContentView(R.layout.activity_main)
+
         mFaceButton = findViewById(R.id.button_face);
         mFaceButton?.setOnClickListener(object : View.OnClickListener {
             override fun onClick(view: View?) {
@@ -77,32 +75,77 @@ class MainActivity : Activity() {
             }
         })
         mTextureView = findViewById<View>(R.id.textureView) as TextureView
+        mGraphicOverlay = findViewById(R.id.graphic_overlay)
     }
     private fun runFaceContourDetection(image: Image) {
+        if(mImage2 == null) {
+            Log.e(TAG, "FAIL TO detect")
+            return
+        }
+        Log.d(TAG, "Start detect")
         val image: InputImage = InputImage.fromMediaImage(mImage2!!, 0)
         val options: FaceDetectorOptions = FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+//            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
             .build()
         mFaceButton!!.isEnabled = false
         val detector: FaceDetector = FaceDetection.getClient(options)
         detector.process(image)
-            .addOnSuccessListener(
-                object : OnSuccessListener<List<Face?>?> {
-                    override fun onSuccess(faces: List<Face?>?) {
-                        mFaceButton!!.isEnabled = true
-                        processFaceContourDetectionResult(faces as List<Face>)
+            .addOnSuccessListener { faces ->
+                mFaceButton!!.setEnabled(true);
+                Log.d(TAG, "detecting........." + faces.size)
+                processFaceContourDetectionResult(faces);
+
+                // Task completed successfully
+                // [START_EXCLUDE]
+                // [START get_face_info]
+                for (face in faces) {
+                    val bounds = face.boundingBox
+                    val rotY = face.headEulerAngleY // Head is rotated to the right rotY degrees
+                    val rotZ = face.headEulerAngleZ // Head is tilted sideways rotZ degrees
+
+                    // If landmark detection was enabled (mouth, ears, eyes, cheeks, and
+                    // nose available):
+                    val leftEar = face.getLandmark(FaceLandmark.LEFT_EAR)
+                    leftEar?.let {
+                        val leftEarPos = leftEar.position
                     }
-                })
-            .addOnFailureListener(
-                object : OnFailureListener {
-                    override fun onFailure(e: Exception) {
-                        // Task failed with an exception
-                        mFaceButton!!.isEnabled = true
-                        e.printStackTrace()
+
+                    // If classification was enabled:
+                    if (face.smilingProbability != null) {
+                        val smileProb = face.smilingProbability
                     }
-                })
+                    if (face.rightEyeOpenProbability != null) {
+                        val rightEyeOpenProb = face.rightEyeOpenProbability
+                    }
+
+                    // If face tracking was enabled:
+                    if (face.trackingId != null) {
+                        val id = face.trackingId
+                    }
+                }
+                if(mImage2 != null) {
+                    mImage2!!.close()
+                    isDetecting = false
+                    Log.d(TAG, "close image")
+                }
+                else {
+                    Log.d(TAG, "close image FAIL!! (mImage2 is null)")
+                }
+
+                // [END get_face_info]
+                // [END_EXCLUDE]
+            }
+
+            .addOnFailureListener { e ->
+                // Task failed with an exception
+                mFaceButton!!.isEnabled = true
+                e.printStackTrace()
+                Log.e(TAG, "FAIL FACE DETECTION")
+            }
+//        mImage2?.close()
     }
+
 
     private fun processFaceContourDetectionResult(faces: List<Face>) {
         // Task completed successfully
@@ -117,6 +160,8 @@ class MainActivity : Activity() {
             mGraphicOverlay?.add(faceGraphic)
             faceGraphic.updateFace(face)
         }
+
+        Log.d(TAG, "Contour.........finish")
     }
 
     private fun showToast(message: String) {
@@ -172,7 +217,7 @@ class MainActivity : Activity() {
 
                 Log.d(TAG, "[$cameraId] facing : $facing")
                 //此处默认打开后置摄像头
-                if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT)
+                if (facing != null && facing == CameraCharacteristics.AUTOMOTIVE_LENS_FACING_EXTERIOR_REAR)
                     continue
                 //获取StreamConfigurationMap，它是管理摄像头支持的所有输出格式和尺寸
                 val map =
@@ -198,6 +243,7 @@ class MainActivity : Activity() {
         } catch (e: CameraAccessException) {
             e.printStackTrace()
         }
+
     }
 
     //选择sizeMap中大于并且最接近width和height的size
@@ -341,7 +387,7 @@ class MainActivity : Activity() {
             // mCaptureBuilder.addTarget(mImageReader!!.surface)
             mCaptureBuilder.set(
                 CaptureRequest.JPEG_ORIENTATION,
-                ORIENTATION[rotation]
+                DEFAULT_ORIENTATIONS[rotation] // 後鏡頭旋轉
             )
             val CaptureCallback: CaptureCallback = object : CaptureCallback() {
                 override fun onCaptureCompleted(
@@ -402,18 +448,61 @@ class MainActivity : Activity() {
             ImageFormat.JPEG, 2  // YUV_420_888, 2
         )
         mImageReader!!.setOnImageAvailableListener({ reader ->
-            mImage2 = reader.acquireNextImage() // img -> bitmap
-           // Log.d("test", "next img")
+            Log.i("test", "detecting: "+ isDetecting)
+            if(!isDetecting) {
+                isDetecting = true
+                mImage2 = reader.acquireNextImage()
+                if (mImage2 != null) {
+                    Log.i("test", "next img")
+                    runFaceContourDetection(mImage2!!)
+//                    mImage2?.close()
+//                    isDetecting = false
+                }
+
+//            var inputStream: InputStream? = null
+//            var mSelectedImage: Bitmap? = null
+//            try {
+//                inputStream = assets.open("grace_hopper.jpg")
+//                mSelectedImage = BitmapFactory.decodeStream(inputStream)
+//            } catch (e: IOException) {
+//                e.printStackTrace()
+//            }
+//            if(mSelectedImage != null) {
+//                // Get the dimensions of the View
+//                var targetedSize: Pair<Integer, Integer> = getTargetedWidthHeight();
+//
+//                int targetWidth = targetedSize.first;
+//                int maxHeight = targetedSize.second;
+//
+//                // Determine how much to scale down the image
+//                float scaleFactor =
+//                Math.max(
+//                    (float) mSelectedImage.getWidth() / (float) targetWidth,
+//                    (float) mSelectedImage.getHeight() / (float) maxHeight);
+//
+//                Bitmap resizedBitmap =
+//                Bitmap.createScaledBitmap(
+//                    mSelectedImage,
+//                    (int) (mSelectedImage.getWidth() / scaleFactor),
+//                    (int) (mSelectedImage.getHeight() / scaleFactor),
+//                    true);
+//
+//                mImageView.setImageBitmap(resizedBitmap);
+//                mSelectedImage = resizedBitmap;
+//            }
 
 
 
-            mImage2!!.close()
 //            mCameraHandler!!.post(
 //                test
 //                ImageSaver(
 //                    reader.acquireNextImage()
 //                )
 //            )
+            }
+            else {
+                Log.d(TAG, "dump image")
+            }
         }, mCameraHandler)
     }
 
@@ -449,13 +538,21 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        private val ORIENTATION = SparseIntArray()
+        val SENSOR_ORIENTATION_DEFAULT_DEGREES = 90  // 後鏡頭
+        val SENSOR_ORIENTATION_INVERSE_DEGREES = 270 // 前鏡頭
 
-        init {
-            ORIENTATION.append(Surface.ROTATION_0, 90)
-            ORIENTATION.append(Surface.ROTATION_90, 0)
-            ORIENTATION.append(Surface.ROTATION_180, 270)
-            ORIENTATION.append(Surface.ROTATION_270, 180)
+        val DEFAULT_ORIENTATIONS = SparseIntArray().apply {
+            append(Surface.ROTATION_0, 90)
+            append(Surface.ROTATION_90, 0)
+            append(Surface.ROTATION_180, 270)
+            append(Surface.ROTATION_270, 180)
+        }
+
+        val INVERSE_ORIENTATIONS = SparseIntArray().apply {
+            append(Surface.ROTATION_0, 270)
+            append(Surface.ROTATION_90, 180)
+            append(Surface.ROTATION_180, 90)
+            append(Surface.ROTATION_270, 0)
         }
     }
 }

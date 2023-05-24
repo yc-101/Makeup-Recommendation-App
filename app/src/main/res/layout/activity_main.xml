@@ -11,7 +11,17 @@
         android:layout_height="match_parent"
         android:id="@+id/textureView"
         android:layout_centerHorizontal="true"
-        android:layout_centerVertical="true"/>
+        android:layout_centerVertical="true" />
+
+    <com.example.camera2.GraphicOverlay
+        android:id="@+id/graphic_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_constraintTop_toTopOf="@id/textureView"
+        app:layout_constraintBottom_toBottomOf="@id/textureView"
+        app:layout_constraintLeft_toLeftOf="@id/textureView"
+        app:layout_constraintRight_toRightOf="@id/textureView"
+        android:layout_alignParentStart="true" />
 
     <Button
         android:layout_width="wrap_content"
@@ -20,7 +30,8 @@
         android:id="@+id/photoButton"
         android:onClick="takePicture"
         android:layout_alignParentBottom="true"
-        android:layout_centerHorizontal="true"/>
+        android:layout_centerHorizontal="true"
+        android:stateListAnimator="@null"/>
 
     <Button
         android:id="@+id/button_face"
@@ -29,6 +40,7 @@
         android:text="@string/find_face_contour_button"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintLeft_toRightOf="@id/photoButton" />
+        app:layout_constraintLeft_toRightOf="@id/photoButton"
+        android:stateListAnimator="@null" />
 
 </RelativeLayout>
