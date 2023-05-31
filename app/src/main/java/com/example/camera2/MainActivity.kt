@@ -55,7 +55,9 @@ class MainActivity : Activity() {
     private var mImage2: Image? = null
     private var mFaceButton: Button? = null
     private var mGraphicOverlay: GraphicOverlay? = null
-    private var isDetecting = false
+    private var isDetecting = false//相機物理角度
+    private var mSensorOrientation: Int? = 0
+    private var mRotationCompensation: Int? = 0
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate")
@@ -82,8 +84,8 @@ class MainActivity : Activity() {
             Log.e(TAG, "FAIL TO detect")
             return
         }
-        Log.d(TAG, "Start detect")
-        val image: InputImage = InputImage.fromMediaImage(mImage2!!, 0)
+        Log.d(TAG, "Start detect" + mRotationCompensation)
+        val image: InputImage = InputImage.fromMediaImage(mImage2!!, 0) // rotation?
         val options: FaceDetectorOptions = FaceDetectorOptions.Builder()
 //            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
@@ -104,24 +106,30 @@ class MainActivity : Activity() {
                     val rotY = face.headEulerAngleY // Head is rotated to the right rotY degrees
                     val rotZ = face.headEulerAngleZ // Head is tilted sideways rotZ degrees
 
+                    Log.d(TAG, "rotY: "+rotY)
+                    Log.d(TAG, "rotZ: "+rotZ)
                     // If landmark detection was enabled (mouth, ears, eyes, cheeks, and
                     // nose available):
                     val leftEar = face.getLandmark(FaceLandmark.LEFT_EAR)
                     leftEar?.let {
                         val leftEarPos = leftEar.position
+                        Log.d(TAG, "leftEarPos: "+leftEarPos)
                     }
 
                     // If classification was enabled:
                     if (face.smilingProbability != null) {
                         val smileProb = face.smilingProbability
+                        Log.d(TAG, "smile: "+smileProb)
                     }
                     if (face.rightEyeOpenProbability != null) {
                         val rightEyeOpenProb = face.rightEyeOpenProbability
+                        Log.d(TAG, "rightEyeOpenProb: "+rightEyeOpenProb)
                     }
 
                     // If face tracking was enabled:
                     if (face.trackingId != null) {
                         val id = face.trackingId
+                        Log.d(TAG, "id: "+id)
                     }
                 }
                 if(mImage2 != null) {
@@ -150,14 +158,14 @@ class MainActivity : Activity() {
     private fun processFaceContourDetectionResult(faces: List<Face>) {
         // Task completed successfully
         if (faces.size == 0) {
-            showToast("No face found")
+//            showToast("No face found")
             return
         }
         mGraphicOverlay?.clear()
         for (i in faces.indices) {
             val face = faces[i]
             val faceGraphic = FaceContourGraphic(mGraphicOverlay)
-            mGraphicOverlay?.add(faceGraphic)
+            mGraphicOverlay?.add(faceGraphic)   // 畫偵測到的臉
             faceGraphic.updateFace(face)
         }
 
@@ -214,11 +222,23 @@ class MainActivity : Activity() {
             for (cameraId in manager.cameraIdList) {
                 val characteristics = manager.getCameraCharacteristics(cameraId)
                 val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-
-                Log.d(TAG, "[$cameraId] facing : $facing")
-                //此处默认打开后置摄像头
+                mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)
+//                mSensorOrientation = 0
+                        //要取前鏡頭 => 若拿到後鏡頭，則不做動作
                 if (facing != null && facing == CameraCharacteristics.AUTOMOTIVE_LENS_FACING_EXTERIOR_REAR)
                     continue
+
+//                // Get the device's current rotation relative to its "native" orientation.
+//                // Then, from the ORIENTATIONS table, look up the angle the image must be
+//                // rotated to compensate for the device's rotation.
+                val deviceRotation = windowManager.defaultDisplay.rotation
+                mRotationCompensation = DEFAULT_ORIENTATIONS.get(deviceRotation)
+                if (facing == 1) {
+                    mRotationCompensation = (mSensorOrientation!! + mRotationCompensation!!) % 360
+                } else { // back-facing
+                    mRotationCompensation = (mSensorOrientation!! - mRotationCompensation!! + 360) % 360
+                }
+
                 //获取StreamConfigurationMap，它是管理摄像头支持的所有输出格式和尺寸
                 val map =
                     characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
@@ -236,6 +256,8 @@ class MainActivity : Activity() {
                 setupImageReader()
 
                 mCameraId = cameraId
+                Log.d(TAG, "[$cameraId] facing : $facing")
+                Log.d(TAG, "[$cameraId] ORIENTATION : "+mRotationCompensation)
                 Log.i(TAG, "-->width:$width height:$height-->setUpCamera-->mPreviewSize:$mPreviewSize-->mCaptureSize:$mCaptureSize")
 
                 break
@@ -307,6 +329,7 @@ class MainActivity : Activity() {
 
     private fun startPreview() {
         val mSurfaceTexture = mTextureView!!.surfaceTexture
+        mTextureView!!.setRotation(90F)
         mSurfaceTexture!!.setDefaultBufferSize(mPreviewSize!!.width, mPreviewSize!!.height)
         val previewSurface = Surface(mSurfaceTexture)
         try {
@@ -315,6 +338,7 @@ class MainActivity : Activity() {
                 mCameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
             mCaptureRequestBuilder!!.addTarget(previewSurface)
             mCaptureRequestBuilder!!.addTarget(mImageReader!!.surface)
+            Log.d(TAG, "SIZE:" +mPreviewSize!!.width+" , "+ mPreviewSize!!.height)
             mCameraDevice!!.createCaptureSession(
                 Arrays.asList(
                     previewSurface,
@@ -445,7 +469,7 @@ class MainActivity : Activity() {
         //2代表ImageReader中最多可以获取两帧图像流
         mImageReader = ImageReader.newInstance(
             mCaptureSize!!.width, mCaptureSize!!.height,
-            ImageFormat.JPEG, 2  // YUV_420_888, 2
+            ImageFormat. YUV_420_888, 2 // JPEG, 2 (YUV較有效率)
         )
         mImageReader!!.setOnImageAvailableListener({ reader ->
             Log.i("test", "detecting: "+ isDetecting)
@@ -542,8 +566,8 @@ class MainActivity : Activity() {
         val SENSOR_ORIENTATION_INVERSE_DEGREES = 270 // 前鏡頭
 
         val DEFAULT_ORIENTATIONS = SparseIntArray().apply {
-            append(Surface.ROTATION_0, 90)
-            append(Surface.ROTATION_90, 0)
+            append(Surface.ROTATION_0, 0)
+            append(Surface.ROTATION_90, 90)
             append(Surface.ROTATION_180, 270)
             append(Surface.ROTATION_270, 180)
         }
