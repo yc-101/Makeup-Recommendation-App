@@ -164,6 +164,7 @@ public class GraphicOverlay extends View {
      */
     public void setCameraInfo(int previewWidth, int previewHeight, int facing) {
         synchronized (lock) {
+            Log.i("test", "setCameraInfo(GraphicOverlay) : "+ previewWidth+" , "+ previewHeight);
             this.previewWidth = previewWidth;
             this.previewHeight = previewHeight;
             this.facing = facing;

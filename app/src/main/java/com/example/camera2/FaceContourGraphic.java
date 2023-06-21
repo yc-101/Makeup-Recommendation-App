@@ -74,6 +74,7 @@ public class FaceContourGraphic extends GraphicOverlay.Graphic {
         float y = translateY(face.getBoundingBox().centerY());
         canvas.drawCircle(x, y, FACE_POSITION_RADIUS, facePositionPaint);
         canvas.drawText("id: " + face.getTrackingId(), x + ID_X_OFFSET, y + ID_Y_OFFSET, idPaint);
+        Log.i("test", "x,y = "+x+","+y);
 
         // Draws a bounding box around the face.
         float xOffset = scaleX(face.getBoundingBox().width() / 2.0f);

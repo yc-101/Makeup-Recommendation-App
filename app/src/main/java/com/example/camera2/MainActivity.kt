@@ -95,7 +95,7 @@ class MainActivity : Activity() {
         detector.process(image)
             .addOnSuccessListener { faces ->
                 mFaceButton!!.setEnabled(true);
-                Log.d(TAG, "detecting........." + faces.size)
+                Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+image.width+", "+image.height+")")
                 processFaceContourDetectionResult(faces);
 
                 // Task completed successfully
@@ -106,8 +106,6 @@ class MainActivity : Activity() {
                     val rotY = face.headEulerAngleY // Head is rotated to the right rotY degrees
                     val rotZ = face.headEulerAngleZ // Head is tilted sideways rotZ degrees
 
-                    Log.d(TAG, "rotY: "+rotY)
-                    Log.d(TAG, "rotZ: "+rotZ)
                     // If landmark detection was enabled (mouth, ears, eyes, cheeks, and
                     // nose available):
                     val leftEar = face.getLandmark(FaceLandmark.LEFT_EAR)
@@ -205,13 +203,16 @@ class MainActivity : Activity() {
             width: Int,
             height: Int
         ) {
+            Log.i(TAG, "onSurfaceTextureSizeChanged")
         }
 
         override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+            Log.i(TAG, "onSurfaceTextureDestroyed")
             return false
         }
 
-        override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+        override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
+            Log.i(TAG, "onSurfaceTextureUpdated")}
     }
 
     private fun setupCamera(width: Int, height: Int) {
@@ -224,13 +225,13 @@ class MainActivity : Activity() {
                 val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
                 mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)
 //                mSensorOrientation = 0
-                        //要取前鏡頭 => 若拿到後鏡頭，則不做動作
+                //要取前鏡頭 => 若拿到後鏡頭，則不做動作
                 if (facing != null && facing == CameraCharacteristics.AUTOMOTIVE_LENS_FACING_EXTERIOR_REAR)
                     continue
 
-//                // Get the device's current rotation relative to its "native" orientation.
-//                // Then, from the ORIENTATIONS table, look up the angle the image must be
-//                // rotated to compensate for the device's rotation.
+                // Get the device's current rotation relative to its "native" orientation.
+                // Then, from the ORIENTATIONS table, look up the angle the image must be
+                // rotated to compensate for the device's rotation.
                 val deviceRotation = windowManager.defaultDisplay.rotation
                 mRotationCompensation = DEFAULT_ORIENTATIONS.get(deviceRotation)
                 if (facing == 1) {
@@ -252,6 +253,7 @@ class MainActivity : Activity() {
                 //获取相机支持的最大拍照尺寸
                 mCaptureSize = Collections.max(map.getOutputSizes(ImageFormat.JPEG).asList()
                 ) { o1, o2 -> o1!!.width * o1.height - o2!!.width * o2.height }
+
                 //此ImageReader用于拍照所需
                 setupImageReader()
 
@@ -297,11 +299,7 @@ class MainActivity : Activity() {
 
         var num = 0
         for(permission:String in permissions){
-            if (ActivityCompat.checkSelfPermission(
-                    this,
-                    permission
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
+            if (ActivityCompat.checkSelfPermission(this, permission ) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(permissions, num++)
                 return
             }
@@ -329,7 +327,7 @@ class MainActivity : Activity() {
 
     private fun startPreview() {
         val mSurfaceTexture = mTextureView!!.surfaceTexture
-        mTextureView!!.setRotation(90F)
+        mTextureView!!.setRotation(270F)
         mSurfaceTexture!!.setDefaultBufferSize(mPreviewSize!!.width, mPreviewSize!!.height)
         val previewSurface = Surface(mSurfaceTexture)
         try {
@@ -459,7 +457,7 @@ class MainActivity : Activity() {
         }
     }
 
-//    private final ImageReader.OnImageAvailableListener  listener = new ImageReader.OnImageAvailableListener() {
+    //    private final ImageReader.OnImageAvailableListener  listener = new ImageReader.OnImageAvailableListener() {
 //        @Override
 //        public void onImageAvailable(ImageReader imageReader) {
 //
@@ -477,7 +475,7 @@ class MainActivity : Activity() {
                 isDetecting = true
                 mImage2 = reader.acquireNextImage()
                 if (mImage2 != null) {
-                    Log.i("test", "next img")
+                    Log.i("test", "next img"+", width="+ mImage2?.width + ", height="+mImage2?.height)
                     runFaceContourDetection(mImage2!!)
 //                    mImage2?.close()
 //                    isDetecting = false
