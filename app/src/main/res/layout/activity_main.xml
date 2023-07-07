@@ -7,8 +7,8 @@
     tools:context="com.example.camera2.MainActivity">
 
     <TextureView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_width="640px"
+        android:layout_height="480px"
         android:id="@+id/textureView"
         android:layout_centerHorizontal="true"
         android:layout_centerVertical="true" />

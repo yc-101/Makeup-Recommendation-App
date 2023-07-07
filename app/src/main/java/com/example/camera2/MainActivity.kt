@@ -226,7 +226,7 @@ class MainActivity : Activity() {
                 mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)
 //                mSensorOrientation = 0
                 //要取前鏡頭 => 若拿到後鏡頭，則不做動作
-                if (facing != null && facing == CameraCharacteristics.AUTOMOTIVE_LENS_FACING_EXTERIOR_REAR)
+                if (facing != null && cameraId != "/dev/video3")
                     continue
 
                 // Get the device's current rotation relative to its "native" orientation.
@@ -247,7 +247,7 @@ class MainActivity : Activity() {
                 mPreviewSize =
                     getOptimalSize(map.getOutputSizes(SurfaceTexture::class.java), width, height)
 
-                for (size:Size in map.getOutputSizes(ImageFormat.JPEG)){
+                for (size:Size in map.getOutputSizes(SurfaceTexture::class.java)){
                     Log.i(TAG, "setUpCamera-->size:$size")
                 }
                 //获取相机支持的最大拍照尺寸
@@ -273,13 +273,16 @@ class MainActivity : Activity() {
     //选择sizeMap中大于并且最接近width和height的size
     private fun getOptimalSize(sizeMap: Array<Size>, width: Int, height: Int): Size {
         val sizeList: MutableList<Size> = ArrayList()
+        Log.i(TAG, "w,h = "+width+","+height)
         for (option in sizeMap) {
             if (width > height) {
                 if (option.width > width && option.height > height) {
+                    Log.i(TAG, "add option w,h = "+option.width+","+option.height)
                     sizeList.add(option)
                 }
             } else {
                 if (option.width > height && option.height > width) {
+                    Log.i(TAG, "add option w,h = "+option.width+","+option.height)
                     sizeList.add(option)
                 }
             }
@@ -290,7 +293,10 @@ class MainActivity : Activity() {
                     return Long.signum((p0!!.width * p0.height - p1!!.width * p1.height).toLong())
                 }
             })
-        } else sizeMap[0]
+        } else {
+            return sizeMap[0]
+        }
+//        else return sizeMap[0]
     }
 
     private fun openCamera() {
