@@ -7,12 +7,10 @@ import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.hardware.camera2.CameraCaptureSession.CaptureCallback
+import android.hardware.camera2.params.OutputConfiguration
 import android.media.Image
 import android.media.ImageReader
-import android.os.Bundle
-import android.os.Environment
-import android.os.Handler
-import android.os.HandlerThread
+import android.os.*
 import android.util.Log
 import android.util.Size
 import android.util.SparseIntArray
@@ -21,6 +19,8 @@ import android.view.TextureView.SurfaceTextureListener
 import android.widget.Button
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
+import androidx.core.view.marginLeft
+import androidx.core.view.marginTop
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.*
 import java.io.File
@@ -80,22 +80,23 @@ class MainActivity : Activity() {
         mGraphicOverlay = findViewById(R.id.graphic_overlay)
     }
     private fun runFaceContourDetection(image: Image) {
-        if(mImage2 == null) {
+        if(image == null) {
             Log.e(TAG, "FAIL TO detect")
             return
         }
         Log.d(TAG, "Start detect" + mRotationCompensation)
-        val image: InputImage = InputImage.fromMediaImage(mImage2!!, 0) // rotation?
+
+        val inputImage: InputImage = InputImage.fromMediaImage(image, 0) // rotation?
         val options: FaceDetectorOptions = FaceDetectorOptions.Builder()
 //            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
             .build()
         mFaceButton!!.isEnabled = false
         val detector: FaceDetector = FaceDetection.getClient(options)
-        detector.process(image)
+        detector.process(inputImage)
             .addOnSuccessListener { faces ->
                 mFaceButton!!.setEnabled(true);
-                Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+image.width+", "+image.height+")")
+                Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+inputImage.width+", "+inputImage.height+")")
                 processFaceContourDetectionResult(faces);
 
                 // Task completed successfully
@@ -130,8 +131,8 @@ class MainActivity : Activity() {
                         Log.d(TAG, "id: "+id)
                     }
                 }
-                if(mImage2 != null) {
-                    mImage2!!.close()
+                if(image != null) {
+                    image.close()
                     isDetecting = false
                     Log.d(TAG, "close image")
                 }
@@ -149,7 +150,6 @@ class MainActivity : Activity() {
                 e.printStackTrace()
                 Log.e(TAG, "FAIL FACE DETECTION")
             }
-//        mImage2?.close()
     }
 
 
@@ -245,7 +245,7 @@ class MainActivity : Activity() {
                     characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
                 //根据TextureView的尺寸设置预览尺寸
                 mPreviewSize =
-                    getOptimalSize(map.getOutputSizes(SurfaceTexture::class.java), width, height)
+                    getOptimalSize(map.getOutputSizes(SurfaceTexture::class.java), mTextureView!!.width, mTextureView!!.height)
 
                 for (size:Size in map.getOutputSizes(SurfaceTexture::class.java)){
                     Log.i(TAG, "setUpCamera-->size:$size")
@@ -294,7 +294,7 @@ class MainActivity : Activity() {
                 }
             })
         } else {
-            return sizeMap[0]
+            return sizeMap.last()
         }
 //        else return sizeMap[0]
     }
@@ -316,25 +316,50 @@ class MainActivity : Activity() {
 
     private val mStateCallback: CameraDevice.StateCallback = object : CameraDevice.StateCallback() {
         override fun onOpened(camera: CameraDevice) {
+            Log.d(TAG, "onOpened")
             mCameraDevice = camera
             startPreview()
         }
 
         override fun onDisconnected(camera: CameraDevice) {
+            Log.d(TAG, "onDisconnected")
             camera.close()
             mCameraDevice = null
         }
 
         override fun onError(camera: CameraDevice, error: Int) {
+            Log.d(TAG, "onError")
             camera.close()
             mCameraDevice = null
         }
     }
 
+    private val mSessionCallback = object : CameraCaptureSession.StateCallback() {
+        override fun onConfigured(session: CameraCaptureSession) {
+            Log.d(TAG, "CameraCaptureSession : onConfigured")
+            try {
+                mCaptureRequest = mCaptureRequestBuilder!!.build()
+                mCameraCaptureSession = session
+                mCameraCaptureSession!!.setRepeatingRequest(
+                    mCaptureRequest!!,
+                    null,
+                    mCameraHandler
+                )
+            } catch (e: CameraAccessException) {
+                e.printStackTrace()
+            }
+        }
+
+        override fun onConfigureFailed(session: CameraCaptureSession) {
+            Log.d(TAG, "CameraCaptureSession : onConfigureFailed")
+        }
+    }
+
     private fun startPreview() {
         val mSurfaceTexture = mTextureView!!.surfaceTexture
-        mTextureView!!.setRotation(270F)
         mSurfaceTexture!!.setDefaultBufferSize(mPreviewSize!!.width, mPreviewSize!!.height)
+        mTextureView!!.setRotation(mRotationCompensation!!.toFloat() + 90)
+
         val previewSurface = Surface(mSurfaceTexture)
         try {
             Log.d("test","start Preview")
@@ -342,32 +367,74 @@ class MainActivity : Activity() {
                 mCameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
             mCaptureRequestBuilder!!.addTarget(previewSurface)
             mCaptureRequestBuilder!!.addTarget(mImageReader!!.surface)
-            Log.d(TAG, "SIZE:" +mPreviewSize!!.width+" , "+ mPreviewSize!!.height)
-            mCameraDevice!!.createCaptureSession(
-                Arrays.asList(
-                    previewSurface,
-                    mImageReader!!.surface
-                ), object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(session: CameraCaptureSession) {
-                        try {
-                            mCaptureRequest = mCaptureRequestBuilder!!.build()
-                            mCameraCaptureSession = session
-                            mCameraCaptureSession!!.setRepeatingRequest(
-                                mCaptureRequest!!,
-                                null,
-                                mCameraHandler
-                            )
-                        } catch (e: CameraAccessException) {
-                            e.printStackTrace()
-                        }
-                    }
+            Log.d(TAG, "preview (w,h):" +mPreviewSize!!.width+" , "+ mPreviewSize!!.height)
+            val surfaces = mutableListOf<Surface>()
+            surfaces.add(previewSurface)
+            surfaces.add(mImageReader!!.surface)
 
-                    override fun onConfigureFailed(session: CameraCaptureSession) {}
-                }, mCameraHandler
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val outputConfigurations = mutableListOf<OutputConfiguration>()
+                for (surface in surfaces) {
+                    outputConfigurations.add(OutputConfiguration(surface))
+                }
+                mCameraDevice!!.createCaptureSessionByOutputConfigurations(
+                    outputConfigurations,
+                    mSessionCallback,
+                    mCameraHandler
+                )
+            } else {
+                mCameraDevice!!.createCaptureSession(surfaces, mSessionCallback, mCameraHandler)
+            }
+
         } catch (e: CameraAccessException) {
             e.printStackTrace()
         }
+        val previewWidth = mPreviewSize!!.width
+        val previewHeight = mPreviewSize!!.height
+
+        val viewWidth = mTextureView!!.width
+        val viewHeight = mTextureView!!.height
+
+        val scaleX = viewWidth.toFloat() / previewWidth
+        val scaleY = viewHeight.toFloat() / previewHeight
+Log.d(TAG, "scaleX: "+scaleX)
+        val scaledWidth: Int
+        val scaledHeight: Int
+        val xOffset: Int
+        val yOffset: Int
+
+        if (scaleX > scaleY) {
+            scaledWidth = (previewWidth * scaleY).toInt()
+            scaledHeight = viewHeight
+            xOffset = (viewWidth - scaledWidth) / 2
+            yOffset = 0
+        } else {
+            scaledWidth = viewWidth
+            scaledHeight = (previewHeight * scaleX).toInt()
+            xOffset = 0
+            yOffset = (viewHeight - scaledHeight) / 2
+        }
+
+        runOnUiThread {
+            mTextureView?.apply {
+                layoutParams.width = scaledWidth
+                layoutParams.height = scaledHeight
+//                marginLeft = xOffset
+//                marginTop = yOffset
+
+            }
+            mGraphicOverlay?.apply {
+                layoutParams.width = scaledWidth // mPreviewSize?.width ?: 0
+                layoutParams.height = scaledHeight //  mPreviewSize?.height ?: 0
+//                marginLeft = xOffset
+//                marginTop = yOffset
+
+                rotation = mRotationCompensation!!.toFloat() + 90
+                requestLayout()
+                Log.d(TAG, "overlay (w,h)"+layoutParams.width+", "+layoutParams.height)
+            }
+        }
+
     }
 
     fun takePicture(view: View?) {
@@ -479,7 +546,7 @@ class MainActivity : Activity() {
             Log.i("test", "detecting: "+ isDetecting)
             if(!isDetecting) {
                 isDetecting = true
-                mImage2 = reader.acquireNextImage()
+                mImage2 = reader.acquireLatestImage()
                 if (mImage2 != null) {
                     Log.i("test", "next img"+", width="+ mImage2?.width + ", height="+mImage2?.height)
                     runFaceContourDetection(mImage2!!)
@@ -530,6 +597,9 @@ class MainActivity : Activity() {
             }
             else {
                 Log.d(TAG, "dump image")
+//                if (mImage2 != null) {
+//                    mImage2!!.close()
+//                }
             }
         }, mCameraHandler)
     }
