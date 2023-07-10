@@ -3,6 +3,7 @@ package com.example.camera2
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
@@ -14,13 +15,14 @@ import android.os.*
 import android.util.Log
 import android.util.Size
 import android.util.SparseIntArray
-import android.view.*
+import android.view.Surface
+import android.view.TextureView
 import android.view.TextureView.SurfaceTextureListener
+import android.view.View
+import android.view.Window
 import android.widget.Button
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
-import androidx.core.view.marginLeft
-import androidx.core.view.marginTop
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.*
 import java.io.File
@@ -35,6 +37,7 @@ import kotlin.ByteArray
 import kotlin.Comparator
 import kotlin.Int
 import kotlin.String
+import kotlin.apply
 import kotlin.arrayOf
 import kotlin.let
 
@@ -73,7 +76,7 @@ class MainActivity : Activity() {
         mFaceButton = findViewById(R.id.button_face);
         mFaceButton?.setOnClickListener(object : View.OnClickListener {
             override fun onClick(view: View?) {
-                runFaceContourDetection(mImage2!!)
+                mFaceButton!!.setEnabled(false)
             }
         })
         mTextureView = findViewById<View>(R.id.textureView) as TextureView
@@ -91,12 +94,24 @@ class MainActivity : Activity() {
         val options: FaceDetectorOptions = FaceDetectorOptions.Builder()
 //            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
+            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
             .build()
-        mFaceButton!!.isEnabled = false
         val detector: FaceDetector = FaceDetection.getClient(options)
         detector.process(inputImage)
             .addOnSuccessListener { faces ->
-                mFaceButton!!.setEnabled(true);
+                if (!mFaceButton!!.isEnabled) {
+                    if (faces.isNotEmpty()) {
+                        val face = faces[0] // 假设只有一个人脸
+                        val faceBitmap = Bitmap.createBitmap(face.boundingBox.width(), face.boundingBox.height(), Bitmap.Config.ARGB_8888)
+
+                        matrix.postTranslate(-face.boundingBox.left.toFloat(), -face.boundingBox.top.toFloat())
+                        canvas.drawBitmap(inputImage.bitmap, matrix, null)
+                        // faceBitmap 现在包含了人脸区域的图像，可以进一步处理或保存
+                        // 例如，将其显示在ImageView中：imageView.setImageBitmap(faceBitmap)
+                    }
+                    mFaceButton!!.isEnabled = true
+                }
+
                 Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+inputImage.width+", "+inputImage.height+")")
                 processFaceContourDetectionResult(faces);
 
@@ -147,7 +162,6 @@ class MainActivity : Activity() {
 
             .addOnFailureListener { e ->
                 // Task failed with an exception
-                mFaceButton!!.isEnabled = true
                 e.printStackTrace()
                 Log.e(TAG, "FAIL FACE DETECTION")
             }
@@ -528,12 +542,6 @@ Log.d(TAG, "scaleX: "+scaleX)
         }
     }
 
-    //    private final ImageReader.OnImageAvailableListener  listener = new ImageReader.OnImageAvailableListener() {
-//        @Override
-//        public void onImageAvailable(ImageReader imageReader) {
-//
-//        }
-//    };
     private fun setupImageReader() {
         //2代表ImageReader中最多可以获取两帧图像流
         mImageReader = ImageReader.newInstance(
@@ -548,56 +556,10 @@ Log.d(TAG, "scaleX: "+scaleX)
                 if (mImage2 != null) {
                     Log.i("test", "next img"+", width="+ mImage2?.width + ", height="+mImage2?.height)
                     runFaceContourDetection(mImage2!!)
-//                    mImage2?.close()
-//                    isDetecting = false
                 }
-
-//            var inputStream: InputStream? = null
-//            var mSelectedImage: Bitmap? = null
-//            try {
-//                inputStream = assets.open("grace_hopper.jpg")
-//                mSelectedImage = BitmapFactory.decodeStream(inputStream)
-//            } catch (e: IOException) {
-//                e.printStackTrace()
-//            }
-//            if(mSelectedImage != null) {
-//                // Get the dimensions of the View
-//                var targetedSize: Pair<Integer, Integer> = getTargetedWidthHeight();
-//
-//                int targetWidth = targetedSize.first;
-//                int maxHeight = targetedSize.second;
-//
-//                // Determine how much to scale down the image
-//                float scaleFactor =
-//                Math.max(
-//                    (float) mSelectedImage.getWidth() / (float) targetWidth,
-//                    (float) mSelectedImage.getHeight() / (float) maxHeight);
-//
-//                Bitmap resizedBitmap =
-//                Bitmap.createScaledBitmap(
-//                    mSelectedImage,
-//                    (int) (mSelectedImage.getWidth() / scaleFactor),
-//                    (int) (mSelectedImage.getHeight() / scaleFactor),
-//                    true);
-//
-//                mImageView.setImageBitmap(resizedBitmap);
-//                mSelectedImage = resizedBitmap;
-//            }
-
-
-
-//            mCameraHandler!!.post(
-//                test
-//                ImageSaver(
-//                    reader.acquireNextImage()
-//                )
-//            )
             }
             else {
                 Log.d(TAG, "dump image")
-//                if (mImage2 != null) {
-//                    mImage2!!.close()
-//                }
             }
         }, mCameraHandler)
     }
@@ -633,6 +595,27 @@ Log.d(TAG, "scaleX: "+scaleX)
         }
     }
 
+    private fun saveBitmapAsImage(bitmap: Bitmap) {
+        val path = Environment.getExternalStorageDirectory().toString() + "/DCIM/CameraV2/"
+        val mImageFile = File(path)
+        if (!mImageFile.exists()) {
+            mImageFile.mkdir()
+        }
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss").format(Date())
+        val fileName = path + "IMG_" + timeStamp + ".jpg"
+        Log.d("test", "image saved"+fileName)
+
+        try {
+            val outputStream = FileOutputStream(mImageFile)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream) // 压缩为JPEG格式
+            outputStream.flush()
+            outputStream.close()
+            Log.d(TAG, "Bitmap saved as image: ${mImageFile.absolutePath}")
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to save bitmap as image: ${e.message}")
+        }
+    }
+
     companion object {
         val SENSOR_ORIENTATION_DEFAULT_DEGREES = 90  // 後鏡頭
         val SENSOR_ORIENTATION_INVERSE_DEGREES = 270 // 前鏡頭
@@ -651,4 +634,5 @@ Log.d(TAG, "scaleX: "+scaleX)
             append(Surface.ROTATION_270, 0)
         }
     }
+
 }

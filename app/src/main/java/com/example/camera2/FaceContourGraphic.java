@@ -108,6 +108,7 @@ public class FaceContourGraphic extends GraphicOverlay.Graphic {
                     x - ID_X_OFFSET,
                     y,
                     idPaint);
+            Log.d("test3", "right eye: "+face.getRightEyeOpenProbability());
         }
         if (face.getLeftEyeOpenProbability() != null) {
             canvas.drawText(
