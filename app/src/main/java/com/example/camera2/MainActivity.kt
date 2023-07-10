@@ -79,6 +79,7 @@ class MainActivity : Activity() {
         mTextureView = findViewById<View>(R.id.textureView) as TextureView
         mGraphicOverlay = findViewById(R.id.graphic_overlay)
     }
+
     private fun runFaceContourDetection(image: Image) {
         if(image == null) {
             Log.e(TAG, "FAIL TO detect")
@@ -86,7 +87,7 @@ class MainActivity : Activity() {
         }
         Log.d(TAG, "Start detect" + mRotationCompensation)
 
-        val inputImage: InputImage = InputImage.fromMediaImage(image, 0) // rotation?
+        val inputImage: InputImage = InputImage.fromMediaImage(image, 90) // rotation?
         val options: FaceDetectorOptions = FaceDetectorOptions.Builder()
 //            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
@@ -245,22 +246,19 @@ class MainActivity : Activity() {
                     characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
                 //根据TextureView的尺寸设置预览尺寸
                 mPreviewSize =
-                    getOptimalSize(map.getOutputSizes(SurfaceTexture::class.java), mTextureView!!.width, mTextureView!!.height)
+                    getOptimalSize(map.getOutputSizes(SurfaceTexture::class.java), width, height)
 
-                for (size:Size in map.getOutputSizes(SurfaceTexture::class.java)){
-                    Log.i(TAG, "setUpCamera-->size:$size")
-                }
                 //获取相机支持的最大拍照尺寸
-                mCaptureSize = Collections.max(map.getOutputSizes(ImageFormat.JPEG).asList()
-                ) { o1, o2 -> o1!!.width * o1.height - o2!!.width * o2.height }
-
+//                mCaptureSize = Collections.max(map.getOutputSizes(ImageFormat.JPEG).asList()
+//                ) { o1, o2 -> o1!!.width * o1.height - o2!!.width * o2.height }
+                mCaptureSize = getOptimalSize(map.getOutputSizes(ImageFormat.JPEG), width, height)
                 //此ImageReader用于拍照所需
                 setupImageReader()
 
                 mCameraId = cameraId
                 Log.d(TAG, "[$cameraId] facing : $facing")
                 Log.d(TAG, "[$cameraId] ORIENTATION : "+mRotationCompensation)
-                Log.i(TAG, "-->width:$width height:$height-->setUpCamera-->mPreviewSize:$mPreviewSize-->mCaptureSize:$mCaptureSize")
+                Log.i(TAG, "screen:$width x$height , setUpCamera , mPreviewSize:$mPreviewSize , mCaptureSize:$mCaptureSize")
 
                 break
             }
@@ -273,8 +271,8 @@ class MainActivity : Activity() {
     //选择sizeMap中大于并且最接近width和height的size
     private fun getOptimalSize(sizeMap: Array<Size>, width: Int, height: Int): Size {
         val sizeList: MutableList<Size> = ArrayList()
-        Log.i(TAG, "w,h = "+width+","+height)
         for (option in sizeMap) {
+            Log.i(TAG, option.toString())
             if (width > height) {
                 if (option.width > width && option.height > height) {
                     Log.i(TAG, "add option w,h = "+option.width+","+option.height)
@@ -294,9 +292,9 @@ class MainActivity : Activity() {
                 }
             })
         } else {
-            return sizeMap.last()
+//            return sizeMap.last()
+            return sizeMap[2] // 0
         }
-//        else return sizeMap[0]
     }
 
     private fun openCamera() {
@@ -358,7 +356,6 @@ class MainActivity : Activity() {
     private fun startPreview() {
         val mSurfaceTexture = mTextureView!!.surfaceTexture
         mSurfaceTexture!!.setDefaultBufferSize(mPreviewSize!!.width, mPreviewSize!!.height)
-        mTextureView!!.setRotation(mRotationCompensation!!.toFloat() + 90)
 
         val previewSurface = Surface(mSurfaceTexture)
         try {
@@ -421,15 +418,16 @@ Log.d(TAG, "scaleX: "+scaleX)
                 layoutParams.height = scaledHeight
 //                marginLeft = xOffset
 //                marginTop = yOffset
-
+                rotation = mRotationCompensation!! + 90F
+                requestLayout()
             }
             mGraphicOverlay?.apply {
-                layoutParams.width = scaledWidth // mPreviewSize?.width ?: 0
-                layoutParams.height = scaledHeight //  mPreviewSize?.height ?: 0
+                layoutParams.width = scaledHeight // scaledWidth // mPreviewSize?.width ?: 0
+                layoutParams.height = scaledWidth // scaledHeight //  mPreviewSize?.height ?: 0
 //                marginLeft = xOffset
 //                marginTop = yOffset
 
-                rotation = mRotationCompensation!!.toFloat() + 90
+                rotation = mRotationCompensation!! + 0F
                 requestLayout()
                 Log.d(TAG, "overlay (w,h)"+layoutParams.width+", "+layoutParams.height)
             }
