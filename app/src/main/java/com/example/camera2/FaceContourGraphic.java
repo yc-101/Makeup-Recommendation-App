@@ -83,6 +83,9 @@ public class FaceContourGraphic extends GraphicOverlay.Graphic {
         float top = y - yOffset;
         float right = x + xOffset;
         float bottom = y + yOffset;
+        float rotY = face.getHeadEulerAngleY(); // Head is rotated to the right rotY degrees
+        float rotZ = face.getHeadEulerAngleZ(); // Head is tilted sideways rotZ degrees
+
         canvas.drawRect(left, top, right, bottom, boxPaint);
 
         List<FaceContour> contour = face.getAllContours();

@@ -14,11 +14,8 @@ import android.os.*
 import android.util.Log
 import android.util.Size
 import android.util.SparseIntArray
-import android.view.Surface
-import android.view.TextureView
+import android.view.*
 import android.view.TextureView.SurfaceTextureListener
-import android.view.View
-import android.view.Window
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.Toast
@@ -40,6 +37,7 @@ import kotlin.Int
 import kotlin.String
 import kotlin.apply
 import kotlin.arrayOf
+import kotlin.collections.ArrayList
 import kotlin.let
 
 
@@ -92,138 +90,6 @@ class MainActivity : Activity() {
             mTempImageView?.visibility = View.GONE
             mCloseButton?.visibility = View.GONE
         }
-
-    }
-
-    private fun runFaceContourDetection(image: Image) {
-        if(image == null) {
-            Log.e(TAG, "FAIL TO detect")
-            return
-        }
-        Log.d(TAG, "Start detect" + mRotationCompensation)
-
-        val inputImage: InputImage = InputImage.fromMediaImage(image, 90) // rotation?
-        val options: FaceDetectorOptions = FaceDetectorOptions.Builder()
-//            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
-            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
-            .build()
-        val detector: FaceDetector = FaceDetection.getClient(options)
-        detector.process(inputImage)
-            .addOnSuccessListener { faces ->
-                if (!mFaceButton!!.isEnabled) {
-                    for (face in faces) {
-                        //The camera image received is in YUV YCbCr Format. Get buffers for each of the planes and use them to create a new bytearray defined by the size of all three buffers combined
-                        val cameraPlaneY = inputImage.planes?.get(0)?.buffer!!
-                        val cameraPlaneU = inputImage.planes?.get(1)?.buffer!!
-                        val cameraPlaneV = inputImage.planes?.get(2)?.buffer!!
-
-//Use the buffers to create a new byteArray that
-                        val compositeByteArray = ByteArray(cameraPlaneY.capacity() + cameraPlaneU.capacity() + cameraPlaneV.capacity())
-
-                        cameraPlaneY.get(compositeByteArray, 0, cameraPlaneY.capacity())
-                        cameraPlaneU.get(compositeByteArray, cameraPlaneY.capacity(), cameraPlaneU.capacity())
-                        cameraPlaneV.get(compositeByteArray, cameraPlaneY.capacity() + cameraPlaneU.capacity(), cameraPlaneV.capacity())
-
-                        val baOutputStream = ByteArrayOutputStream()
-                        val yuvImage: YuvImage = YuvImage(compositeByteArray, ImageFormat.NV21, image.width, image.height, null)
-                        yuvImage.compressToJpeg(Rect(
-                            if (face.boundingBox.top > 0 ) face.boundingBox.top else 0,
-                            if (face.boundingBox.left > 0 )face.boundingBox.left else 0,
-                            face.boundingBox.height(), // face.boundingBox.bottom - face.boundingBox.top,
-                            face.boundingBox.width() // face.boundingBox.right - face.boundingBox.left
-                             ), 75, baOutputStream)
-                        val byteForBitmap = baOutputStream.toByteArray()
-                        val bitmapImage = BitmapFactory.decodeByteArray(byteForBitmap, 0, byteForBitmap.size)
-                        if (bitmapImage != null) { // Check if the bitmap is not null
-                            Log.d(TAG, "bitmap: "+bitmapImage.width+"x"+bitmapImage.height+
-                                    ",  face =[${face.boundingBox.left}~${face.boundingBox.right}, ${face.boundingBox.top}~${face.boundingBox.bottom}]" +
-                                    ", wxh = ${face.boundingBox.width()}x${face.boundingBox.height()}")
-                            saveBitmapAsImage(this, bitmapImage)
-                        } else {
-                            Log.e(TAG, "Failed to decode bitmap from byte array")
-                        }
-                    }
-                    mFaceButton!!.isEnabled = true
-                }
-
-
-
-        Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+inputImage.width+", "+inputImage.height+")")
-                processFaceContourDetectionResult(faces);
-
-                // Task completed successfully
-                // [START_EXCLUDE]
-                // [START get_face_info]
-                for (face in faces) {
-                    val bounds = face.boundingBox
-                    val rotY = face.headEulerAngleY // Head is rotated to the right rotY degrees
-                    val rotZ = face.headEulerAngleZ // Head is tilted sideways rotZ degrees
-
-                    // If landmark detection was enabled (mouth, ears, eyes, cheeks, and
-                    // nose available):
-                    val leftEar = face.getLandmark(FaceLandmark.LEFT_EAR)
-                    leftEar?.let {
-                        val leftEarPos = leftEar.position
-                        Log.d(TAG, "leftEarPos: "+leftEarPos)
-                    }
-
-                    // If classification was enabled:
-                    if (face.smilingProbability != null) {
-                        val smileProb = face.smilingProbability
-                        Log.d(TAG, "smile: "+smileProb)
-                    }
-                    if (face.rightEyeOpenProbability != null) {
-                        val rightEyeOpenProb = face.rightEyeOpenProbability
-                        Log.d(TAG, "rightEyeOpenProb: "+rightEyeOpenProb)
-                    }
-
-                    // If face tracking was enabled:
-                    if (face.trackingId != null) {
-                        val id = face.trackingId
-                        Log.d(TAG, "id: "+id)
-                    }
-                }
-                if(image != null) {
-                    image.close()
-                    isDetecting = false
-                    Log.d(TAG, "close image")
-                }
-                else {
-                    Log.d(TAG, "close image FAIL!! (mImage2 is null)")
-                }
-
-                // [END get_face_info]
-                // [END_EXCLUDE]
-            }
-
-            .addOnFailureListener { e ->
-                // Task failed with an exception
-                e.printStackTrace()
-                Log.e(TAG, "FAIL FACE DETECTION")
-            }
-    }
-
-
-    private fun processFaceContourDetectionResult(faces: List<Face>) {
-        // Task completed successfully
-        if (faces.size == 0) {
-//            showToast("No face found")
-            return
-        }
-        mGraphicOverlay?.clear()
-        for (i in faces.indices) {
-            val face = faces[i]
-            val faceGraphic = FaceContourGraphic(mGraphicOverlay)
-            mGraphicOverlay?.add(faceGraphic)   // 畫偵測到的臉
-            faceGraphic.updateFace(face)
-        }
-
-        Log.d(TAG, "Contour.........finish")
-    }
-
-    private fun showToast(message: String) {
-        Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
     }
 
     override fun onResume() {
@@ -359,7 +225,7 @@ class MainActivity : Activity() {
                 return
             }
         }
-        manager?.openCamera(mCameraId!!, mStateCallback, mCameraHandler)
+        manager.openCamera(mCameraId!!, mStateCallback, mCameraHandler)
         Log.d(TAG, "Camera [$mCameraId] opened.")
     }
 
@@ -462,13 +328,15 @@ Log.d(TAG, "scaleX: "+scaleX)
             xOffset = 0
             yOffset = (viewHeight - scaledHeight) / 2
         }
-
         runOnUiThread {
             mTextureView?.apply {
                 layoutParams.width = scaledWidth
                 layoutParams.height = scaledHeight
 //                marginLeft = xOffset
 //                marginTop = yOffset
+//                layoutParams = (layoutParams as ViewGroup.MarginLayoutParams).apply {
+//                    setMargins(xOffset, yOffset, right, bottom)
+//                }
                 rotation = mRotationCompensation!! + 90F
                 requestLayout()
             }
@@ -477,7 +345,6 @@ Log.d(TAG, "scaleX: "+scaleX)
                 layoutParams.height = scaledWidth // scaledHeight //  mPreviewSize?.height ?: 0
 //                marginLeft = xOffset
 //                marginTop = yOffset
-
                 rotation = mRotationCompensation!! + 0F
                 requestLayout()
                 Log.d(TAG, "overlay (w,h)"+layoutParams.width+", "+layoutParams.height)
@@ -486,6 +353,69 @@ Log.d(TAG, "scaleX: "+scaleX)
 
     }
 
+    override fun onPause() {
+        super.onPause()
+        if (mCameraCaptureSession != null) {
+            mCameraCaptureSession!!.close()
+            mCameraCaptureSession = null
+        }
+        if (mCameraDevice != null) {
+            mCameraDevice!!.close()
+            mCameraDevice = null
+        }
+        if (mImageReader != null) {
+            mImageReader!!.close()
+            mImageReader = null
+        }
+    }
+
+    private fun setupImageReader() {
+        //2代表ImageReader中最多可以获取两帧图像流
+        mImageReader = ImageReader.newInstance(
+            mCaptureSize!!.width, mCaptureSize!!.height,
+            ImageFormat.YUV_420_888, 2 // JPEG, 2 (YUV較有效率) // YUV_420_888, 2
+        )
+        mImageReader!!.setOnImageAvailableListener({ reader ->
+            Log.i("test", "detecting: "+ isDetecting)
+            if(!isDetecting) {
+                isDetecting = true
+                mImage2 = reader.acquireLatestImage()
+                if (mImage2 != null) {
+                    Log.i("test", "next img"+", width="+ mImage2?.width + ", height="+mImage2?.height)
+                    runFaceContourDetection(mImage2!!)
+                }
+            }
+            else {
+                Log.d(TAG, "dump image")
+            }
+        }, mCameraHandler)
+    }
+
+    /** Rotation / showToast **/
+    companion object {
+        val SENSOR_ORIENTATION_DEFAULT_DEGREES = 90  // 後鏡頭
+        val SENSOR_ORIENTATION_INVERSE_DEGREES = 270 // 前鏡頭
+
+        val DEFAULT_ORIENTATIONS = SparseIntArray().apply {
+            append(Surface.ROTATION_0, 0)
+            append(Surface.ROTATION_90, 90)
+            append(Surface.ROTATION_180, 270)
+            append(Surface.ROTATION_270, 180)
+        }
+
+        val INVERSE_ORIENTATIONS = SparseIntArray().apply {
+            append(Surface.ROTATION_0, 270)
+            append(Surface.ROTATION_90, 180)
+            append(Surface.ROTATION_180, 90)
+            append(Surface.ROTATION_270, 0)
+        }
+    }
+
+    private fun showToast(message: String) {
+        Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+    }
+
+    /** CAPTURE **/
     fun takePicture(view: View?) {
         lockFocus()
     }
@@ -563,75 +493,7 @@ Log.d(TAG, "scaleX: "+scaleX)
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-        if (mCameraCaptureSession != null) {
-            mCameraCaptureSession!!.close()
-            mCameraCaptureSession = null
-        }
-        if (mCameraDevice != null) {
-            mCameraDevice!!.close()
-            mCameraDevice = null
-        }
-        if (mImageReader != null) {
-            mImageReader!!.close()
-            mImageReader = null
-        }
-    }
-
-    private fun setupImageReader() {
-        //2代表ImageReader中最多可以获取两帧图像流
-        mImageReader = ImageReader.newInstance(
-            mCaptureSize!!.width, mCaptureSize!!.height,
-            ImageFormat.YUV_420_888, 2 // JPEG, 2 (YUV較有效率) // YUV_420_888, 2
-        )
-        mImageReader!!.setOnImageAvailableListener({ reader ->
-            Log.i("test", "detecting: "+ isDetecting)
-            if(!isDetecting) {
-                isDetecting = true
-                mImage2 = reader.acquireLatestImage()
-                if (mImage2 != null) {
-                    Log.i("test", "next img"+", width="+ mImage2?.width + ", height="+mImage2?.height)
-                    runFaceContourDetection(mImage2!!)
-                }
-            }
-            else {
-                Log.d(TAG, "dump image")
-            }
-        }, mCameraHandler)
-    }
-
-    class ImageSaver(private val mImage: Image) : Runnable {
-        override fun run() {
-            val buffer = mImage.planes[0].buffer
-            val data = ByteArray(buffer.remaining())
-            buffer[data]
-            val path = Environment.getExternalStorageDirectory().toString() + "/DCIM/CameraV2/"
-            val mImageFile = File(path)
-            if (!mImageFile.exists()) {
-                mImageFile.mkdir()
-            }
-            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss").format(Date())
-            val fileName = path + "IMG_" + timeStamp + ".jpg"
-            Log.d("test", "image saved"+fileName)
-            var fos: FileOutputStream? = null
-            try {
-                fos = FileOutputStream(fileName)
-                fos.write(data, 0, data.size)
-            } catch (e: IOException) {
-                e.printStackTrace()
-            } finally {
-                if (fos != null) {
-                    try {
-                        fos.close()
-                    } catch (e: IOException) {
-                        e.printStackTrace()
-                    }
-                }
-            }
-        }
-    }
-
+    /** SAVE IMAGE **/
     private fun saveBitmapAsImage(context: Context, bitmap: Bitmap) {
 //        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
 //        val fileName = "IMG_$timeStamp.jpg"
@@ -677,24 +539,93 @@ Log.d(TAG, "scaleX: "+scaleX)
         mCloseButton?.visibility = View.VISIBLE
     }
 
-
-    companion object {
-        val SENSOR_ORIENTATION_DEFAULT_DEGREES = 90  // 後鏡頭
-        val SENSOR_ORIENTATION_INVERSE_DEGREES = 270 // 前鏡頭
-
-        val DEFAULT_ORIENTATIONS = SparseIntArray().apply {
-            append(Surface.ROTATION_0, 0)
-            append(Surface.ROTATION_90, 90)
-            append(Surface.ROTATION_180, 270)
-            append(Surface.ROTATION_270, 180)
+    /** FACE DETECTOR **/
+    private fun runFaceContourDetection(image: Image) {
+        if(image == null) {
+            Log.e(TAG, "FAIL TO detect")
+            return
         }
+        Log.d(TAG, "Start detect" + mRotationCompensation)
 
-        val INVERSE_ORIENTATIONS = SparseIntArray().apply {
-            append(Surface.ROTATION_0, 270)
-            append(Surface.ROTATION_90, 180)
-            append(Surface.ROTATION_180, 90)
-            append(Surface.ROTATION_270, 0)
-        }
+        val inputImage: InputImage = InputImage.fromMediaImage(image, 90) // rotation?
+        val options: FaceDetectorOptions = FaceDetectorOptions.Builder()
+//            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
+            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
+            .build()
+        val detector: FaceDetector = FaceDetection.getClient(options)
+        detector.process(inputImage)
+            .addOnSuccessListener { faces ->
+                if (!mFaceButton!!.isEnabled) {
+                    for (face in faces) {
+                        //The camera image received is in YUV YCbCr Format. Get buffers for each of the planes and use them to create a new bytearray defined by the size of all three buffers combined
+                        val cameraPlaneY = inputImage.planes?.get(0)?.buffer!!
+                        val cameraPlaneU = inputImage.planes?.get(1)?.buffer!!
+                        val cameraPlaneV = inputImage.planes?.get(2)?.buffer!!
+
+//Use the buffers to create a new byteArray that
+                        val compositeByteArray = ByteArray(cameraPlaneY.capacity() + cameraPlaneU.capacity() + cameraPlaneV.capacity())
+
+                        cameraPlaneY.get(compositeByteArray, 0, cameraPlaneY.capacity())
+                        cameraPlaneU.get(compositeByteArray, cameraPlaneY.capacity(), cameraPlaneU.capacity())
+                        cameraPlaneV.get(compositeByteArray, cameraPlaneY.capacity() + cameraPlaneU.capacity(), cameraPlaneV.capacity())
+
+                        val baOutputStream = ByteArrayOutputStream()
+                        val yuvImage: YuvImage = YuvImage(compositeByteArray, ImageFormat.NV21, image.width, image.height, null)
+                        yuvImage.compressToJpeg(Rect(
+                            if (face.boundingBox.top > 0 ) face.boundingBox.top else 0,
+                            if (face.boundingBox.left > 0 )face.boundingBox.left else 0,
+                            face.boundingBox.height(), // face.boundingBox.bottom - face.boundingBox.top,
+                            face.boundingBox.width() // face.boundingBox.right - face.boundingBox.left
+                        ), 75, baOutputStream)
+                        val byteForBitmap = baOutputStream.toByteArray()
+                        val bitmapImage = BitmapFactory.decodeByteArray(byteForBitmap, 0, byteForBitmap.size)
+                        if (bitmapImage != null) { // Check if the bitmap is not null
+                            Log.d(TAG, "bitmap: "+bitmapImage.width+"x"+bitmapImage.height+
+                                    ",  face =[${face.boundingBox.left}~${face.boundingBox.right}, ${face.boundingBox.top}~${face.boundingBox.bottom}]" +
+                                    ", wxh = ${face.boundingBox.width()}x${face.boundingBox.height()}")
+                            saveBitmapAsImage(this, bitmapImage)
+                        } else {
+                            Log.e(TAG, "Failed to decode bitmap from byte array")
+                        }
+                    }
+                    mFaceButton!!.isEnabled = true
+                }
+
+                Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+inputImage.width+", "+inputImage.height+")")
+                processFaceContourDetectionResult(faces);
+
+                if(image != null) {
+                    image.close()
+                    isDetecting = false
+                    Log.d(TAG, "close image")
+                }
+                else {
+                    Log.d(TAG, "close image FAIL!! (mImage2 is null)")
+                }
+            }
+
+            .addOnFailureListener { e ->
+                // Task failed with an exception
+                e.printStackTrace()
+                Log.e(TAG, "FAIL FACE DETECTION")
+            }
     }
 
+    private fun processFaceContourDetectionResult(faces: List<Face>) {
+        // Task completed successfully
+        if (faces.size == 0) {
+//            showToast("No face found")
+            return
+        }
+        mGraphicOverlay?.clear()
+        for (i in faces.indices) {
+            val face = faces[i]
+            val faceGraphic = FaceContourGraphic(mGraphicOverlay)
+            mGraphicOverlay?.add(faceGraphic)   // 畫偵測到的臉
+            faceGraphic.updateFace(face)
+        }
+
+        Log.d(TAG, "Contour.........finish")
+    }
 }
