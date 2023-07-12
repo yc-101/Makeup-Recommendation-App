@@ -558,32 +558,32 @@ Log.d(TAG, "scaleX: "+scaleX)
             .addOnSuccessListener { faces ->
                 if (!mFaceButton!!.isEnabled) {
                     for (face in faces) {
-                        //The camera image received is in YUV YCbCr Format. Get buffers for each of the planes and use them to create a new bytearray defined by the size of all three buffers combined
-                        val cameraPlaneY = inputImage.planes?.get(0)?.buffer!!
-                        val cameraPlaneU = inputImage.planes?.get(1)?.buffer!!
-                        val cameraPlaneV = inputImage.planes?.get(2)?.buffer!!
+                        Log.d("TEST2", "image: " +inputImage.width +"x"+inputImage.height+
+                                ",  face = [${face.boundingBox.left}~${face.boundingBox.right}, ${face.boundingBox.top}~${face.boundingBox.bottom}]" +
+                                ", ${face.boundingBox.width()}x${face.boundingBox.height()}")
 
-//Use the buffers to create a new byteArray that
-                        val compositeByteArray = ByteArray(cameraPlaneY.capacity() + cameraPlaneU.capacity() + cameraPlaneV.capacity())
+                        //The camera image received is in YUV YCbCr Format. Get buffers for each of the planes and use them to create a new bytearray defined by the size of all three buffers combined
+                        val cameraPlaneY = inputImage.planes?.get(0)!!.buffer!!
+                        val cameraPlaneV = inputImage.planes?.get(2)!!.buffer!!
+
+                        val compositeByteArray = ByteArray(cameraPlaneY.capacity() + cameraPlaneV.capacity())
 
                         cameraPlaneY.get(compositeByteArray, 0, cameraPlaneY.capacity())
-                        cameraPlaneU.get(compositeByteArray, cameraPlaneY.capacity(), cameraPlaneU.capacity())
-                        cameraPlaneV.get(compositeByteArray, cameraPlaneY.capacity() + cameraPlaneU.capacity(), cameraPlaneV.capacity())
+                        cameraPlaneV.get(compositeByteArray, cameraPlaneY.capacity(), cameraPlaneV.capacity())
 
                         val baOutputStream = ByteArrayOutputStream()
                         val yuvImage: YuvImage = YuvImage(compositeByteArray, ImageFormat.NV21, image.width, image.height, null)
                         yuvImage.compressToJpeg(Rect(
-                            if (face.boundingBox.top > 0 ) face.boundingBox.top else 0,
                             if (face.boundingBox.left > 0 )face.boundingBox.left else 0,
-                            face.boundingBox.height(), // face.boundingBox.bottom - face.boundingBox.top,
-                            face.boundingBox.width() // face.boundingBox.right - face.boundingBox.left
+                            if (face.boundingBox.top > 0 ) face.boundingBox.top else 0,
+                            if (face.boundingBox.right > 0 ) face.boundingBox.right else image.width,
+                            if (face.boundingBox.bottom > 0 )face.boundingBox.bottom else image.height
                         ), 75, baOutputStream)
                         val byteForBitmap = baOutputStream.toByteArray()
                         val bitmapImage = BitmapFactory.decodeByteArray(byteForBitmap, 0, byteForBitmap.size)
                         if (bitmapImage != null) { // Check if the bitmap is not null
-                            Log.d(TAG, "bitmap: "+bitmapImage.width+"x"+bitmapImage.height+
-                                    ",  face =[${face.boundingBox.left}~${face.boundingBox.right}, ${face.boundingBox.top}~${face.boundingBox.bottom}]" +
-                                    ", wxh = ${face.boundingBox.width()}x${face.boundingBox.height()}")
+                            Log.d("TEST2",
+                                ", bitmap: "+bitmapImage.width+"x"+bitmapImage.height)
                             saveBitmapAsImage(this, bitmapImage)
                         } else {
                             Log.e(TAG, "Failed to decode bitmap from byte array")
