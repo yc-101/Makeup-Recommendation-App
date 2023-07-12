@@ -36,4 +36,21 @@
         android:layout_alignParentBottom="true"
         android:stateListAnimator="@null" />
 
+    <ImageView
+        android:id="@+id/photoImageView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:scaleType="fitCenter"
+        android:layout_centerInParent="true" />
+
+    <Button
+        android:id="@+id/closeButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="393dp"
+        android:stateListAnimator="@null"
+        android:text="close"
+        android:visibility="gone" />
+
 </RelativeLayout>

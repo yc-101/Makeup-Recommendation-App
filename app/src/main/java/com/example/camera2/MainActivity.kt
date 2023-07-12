@@ -2,10 +2,9 @@ package com.example.camera2
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.ImageFormat
-import android.graphics.SurfaceTexture
+import android.graphics.*
 import android.hardware.camera2.*
 import android.hardware.camera2.CameraCaptureSession.CaptureCallback
 import android.hardware.camera2.params.OutputConfiguration
@@ -21,10 +20,12 @@ import android.view.TextureView.SurfaceTextureListener
 import android.view.View
 import android.view.Window
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.*
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -50,17 +51,21 @@ class MainActivity : Activity() {
     private var mCameraThread: HandlerThread? = null
     private var mCameraHandler: Handler? = null
     private var mCameraDevice: CameraDevice? = null
-    private var mTextureView: TextureView? = null
     private var mImageReader: ImageReader? = null
     private var mCaptureRequestBuilder: CaptureRequest.Builder? = null
     private var mCaptureRequest: CaptureRequest? = null
     private var mCameraCaptureSession: CameraCaptureSession? = null
     private var mImage2: Image? = null
-    private var mFaceButton: Button? = null
-    private var mGraphicOverlay: GraphicOverlay? = null
-    private var isDetecting = false//相機物理角度
+    private var isDetecting = false
     private var mSensorOrientation: Int? = 0
     private var mRotationCompensation: Int? = 0
+    // ================== UI ================== //
+    private var mTextureView: TextureView? = null
+    private var mFaceButton: Button? = null
+    private var mGraphicOverlay: GraphicOverlay? = null
+    private var mTempImageView: ImageView? = null
+    private var mCloseButton: Button? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate")
@@ -81,6 +86,13 @@ class MainActivity : Activity() {
         })
         mTextureView = findViewById<View>(R.id.textureView) as TextureView
         mGraphicOverlay = findViewById(R.id.graphic_overlay)
+        mTempImageView = findViewById(R.id.photoImageView)
+        mCloseButton = findViewById(R.id.closeButton)
+        mCloseButton?.setOnClickListener {
+            mTempImageView?.visibility = View.GONE
+            mCloseButton?.visibility = View.GONE
+        }
+
     }
 
     private fun runFaceContourDetection(image: Image) {
@@ -100,19 +112,44 @@ class MainActivity : Activity() {
         detector.process(inputImage)
             .addOnSuccessListener { faces ->
                 if (!mFaceButton!!.isEnabled) {
-                    if (faces.isNotEmpty()) {
-                        val face = faces[0] // 假设只有一个人脸
-                        val faceBitmap = Bitmap.createBitmap(face.boundingBox.width(), face.boundingBox.height(), Bitmap.Config.ARGB_8888)
+                    for (face in faces) {
+                        //The camera image received is in YUV YCbCr Format. Get buffers for each of the planes and use them to create a new bytearray defined by the size of all three buffers combined
+                        val cameraPlaneY = inputImage.planes?.get(0)?.buffer!!
+                        val cameraPlaneU = inputImage.planes?.get(1)?.buffer!!
+                        val cameraPlaneV = inputImage.planes?.get(2)?.buffer!!
 
-                        matrix.postTranslate(-face.boundingBox.left.toFloat(), -face.boundingBox.top.toFloat())
-                        canvas.drawBitmap(inputImage.bitmap, matrix, null)
-                        // faceBitmap 现在包含了人脸区域的图像，可以进一步处理或保存
-                        // 例如，将其显示在ImageView中：imageView.setImageBitmap(faceBitmap)
+//Use the buffers to create a new byteArray that
+                        val compositeByteArray = ByteArray(cameraPlaneY.capacity() + cameraPlaneU.capacity() + cameraPlaneV.capacity())
+
+                        cameraPlaneY.get(compositeByteArray, 0, cameraPlaneY.capacity())
+                        cameraPlaneU.get(compositeByteArray, cameraPlaneY.capacity(), cameraPlaneU.capacity())
+                        cameraPlaneV.get(compositeByteArray, cameraPlaneY.capacity() + cameraPlaneU.capacity(), cameraPlaneV.capacity())
+
+                        val baOutputStream = ByteArrayOutputStream()
+                        val yuvImage: YuvImage = YuvImage(compositeByteArray, ImageFormat.NV21, image.width, image.height, null)
+                        yuvImage.compressToJpeg(Rect(
+                            if (face.boundingBox.top > 0 ) face.boundingBox.top else 0,
+                            if (face.boundingBox.left > 0 )face.boundingBox.left else 0,
+                            face.boundingBox.height(), // face.boundingBox.bottom - face.boundingBox.top,
+                            face.boundingBox.width() // face.boundingBox.right - face.boundingBox.left
+                             ), 75, baOutputStream)
+                        val byteForBitmap = baOutputStream.toByteArray()
+                        val bitmapImage = BitmapFactory.decodeByteArray(byteForBitmap, 0, byteForBitmap.size)
+                        if (bitmapImage != null) { // Check if the bitmap is not null
+                            Log.d(TAG, "bitmap: "+bitmapImage.width+"x"+bitmapImage.height+
+                                    ",  face =[${face.boundingBox.left}~${face.boundingBox.right}, ${face.boundingBox.top}~${face.boundingBox.bottom}]" +
+                                    ", wxh = ${face.boundingBox.width()}x${face.boundingBox.height()}")
+                            saveBitmapAsImage(this, bitmapImage)
+                        } else {
+                            Log.e(TAG, "Failed to decode bitmap from byte array")
+                        }
                     }
                     mFaceButton!!.isEnabled = true
                 }
 
-                Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+inputImage.width+", "+inputImage.height+")")
+
+
+        Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+inputImage.width+", "+inputImage.height+")")
                 processFaceContourDetectionResult(faces);
 
                 // Task completed successfully
@@ -254,7 +291,6 @@ class MainActivity : Activity() {
                 } else { // back-facing
                     mRotationCompensation = (mSensorOrientation!! - mRotationCompensation!! + 360) % 360
                 }
-
                 //获取StreamConfigurationMap，它是管理摄像头支持的所有输出格式和尺寸
                 val map =
                     characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
@@ -262,6 +298,7 @@ class MainActivity : Activity() {
                 mPreviewSize =
                     getOptimalSize(map.getOutputSizes(SurfaceTexture::class.java), width, height)
 
+//                configureTextureViewTransform(mTextureView!!.getWidth(),mTextureView!!.getHeight())
                 //获取相机支持的最大拍照尺寸
 //                mCaptureSize = Collections.max(map.getOutputSizes(ImageFormat.JPEG).asList()
 //                ) { o1, o2 -> o1!!.width * o1.height - o2!!.width * o2.height }
@@ -546,7 +583,7 @@ Log.d(TAG, "scaleX: "+scaleX)
         //2代表ImageReader中最多可以获取两帧图像流
         mImageReader = ImageReader.newInstance(
             mCaptureSize!!.width, mCaptureSize!!.height,
-            ImageFormat. YUV_420_888, 2 // JPEG, 2 (YUV較有效率)
+            ImageFormat.YUV_420_888, 2 // JPEG, 2 (YUV較有效率) // YUV_420_888, 2
         )
         mImageReader!!.setOnImageAvailableListener({ reader ->
             Log.i("test", "detecting: "+ isDetecting)
@@ -595,26 +632,51 @@ Log.d(TAG, "scaleX: "+scaleX)
         }
     }
 
-    private fun saveBitmapAsImage(bitmap: Bitmap) {
-        val path = Environment.getExternalStorageDirectory().toString() + "/DCIM/CameraV2/"
-        val mImageFile = File(path)
-        if (!mImageFile.exists()) {
-            mImageFile.mkdir()
-        }
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss").format(Date())
-        val fileName = path + "IMG_" + timeStamp + ".jpg"
-        Log.d("test", "image saved"+fileName)
+    private fun saveBitmapAsImage(context: Context, bitmap: Bitmap) {
+//        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+//        val fileName = "IMG_$timeStamp.jpg"
+//
+//        val contentValues = ContentValues().apply {
+//            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+//            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+//            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DCIM + "/CameraV2")
+//        }
+//
+//        val resolver: ContentResolver = context.contentResolver
+//        var outputStream: OutputStream? = null
+//        var uri: Uri? = null
+//
+//        try {
+//            val contentUri: Uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+//            uri = resolver.insert(contentUri, contentValues)
+//            if (uri == null) {
+//                throw IOException("Failed to create image file")
+//            }
+//
+//            outputStream = resolver.openOutputStream(uri)
+//            if (outputStream == null) {
+//                throw IOException("Failed to open output stream")
+//            }
+//
+//            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+//            outputStream.flush()
+//            Log.d(TAG, "Bitmap saved as image: ${uri.toString()}")
+//        } catch (e: IOException) {
+//            Log.e(TAG, "Failed to save bitmap as image: ${e.message}")
+//        } finally {
+//            try {
+//                outputStream?.close()
+//            } catch (e: IOException) {
+//                Log.e(TAG, "Failed to close output stream: ${e.message}")
+//            }
+//        }
 
-        try {
-            val outputStream = FileOutputStream(mImageFile)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream) // 压缩为JPEG格式
-            outputStream.flush()
-            outputStream.close()
-            Log.d(TAG, "Bitmap saved as image: ${mImageFile.absolutePath}")
-        } catch (e: IOException) {
-            Log.e(TAG, "Failed to save bitmap as image: ${e.message}")
-        }
+        // 显示照片到ImageView
+        mTempImageView?.setImageBitmap(bitmap)
+        mTempImageView?.visibility = View.VISIBLE
+        mCloseButton?.visibility = View.VISIBLE
     }
+
 
     companion object {
         val SENSOR_ORIENTATION_DEFAULT_DEGREES = 90  // 後鏡頭
