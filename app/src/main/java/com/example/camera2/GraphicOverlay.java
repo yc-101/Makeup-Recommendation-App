@@ -141,7 +141,7 @@ public class GraphicOverlay extends View {
      * Adds a graphic to the overlay.
      */
     public void add(Graphic graphic) {
-        Log.d("test", "added graphic");
+//        Log.d("test", "added graphic");
         synchronized (lock) {
             graphics.add(graphic);
         }

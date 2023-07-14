@@ -130,7 +130,8 @@ class MainActivity : Activity() {
         }
 
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
-            Log.i(TAG, "onSurfaceTextureUpdated")}
+//            Log.i(TAG, "onSurfaceTextureUpdated")
+        }
     }
 
     private fun setupCamera(width: Int, height: Int) {
@@ -272,7 +273,7 @@ class MainActivity : Activity() {
 
     private fun startPreview() {
         val mSurfaceTexture = mTextureView!!.surfaceTexture
-        mSurfaceTexture!!.setDefaultBufferSize(mPreviewSize!!.width, mPreviewSize!!.height)
+        mSurfaceTexture!!.setDefaultBufferSize(mPreviewSize!!.height, mPreviewSize!!.width)
 
         val previewSurface = Surface(mSurfaceTexture)
         try {
@@ -349,6 +350,10 @@ Log.d(TAG, "scaleX: "+scaleX)
                 requestLayout()
                 Log.d(TAG, "overlay (w,h)"+layoutParams.width+", "+layoutParams.height)
             }
+            mTempImageView?.apply {
+                rotation = mRotationCompensation!! + 90F
+                requestLayout()
+            }
         }
 
     }
@@ -376,17 +381,17 @@ Log.d(TAG, "scaleX: "+scaleX)
             ImageFormat.YUV_420_888, 2 // JPEG, 2 (YUV較有效率) // YUV_420_888, 2
         )
         mImageReader!!.setOnImageAvailableListener({ reader ->
-            Log.i("test", "detecting: "+ isDetecting)
+//            Log.i("test", "detecting: "+ isDetecting)
             if(!isDetecting) {
                 isDetecting = true
                 mImage2 = reader.acquireLatestImage()
                 if (mImage2 != null) {
-                    Log.i("test", "next img"+", width="+ mImage2?.width + ", height="+mImage2?.height)
+//                    Log.i("test", "next img"+", width="+ mImage2?.width + ", height="+mImage2?.height)
                     runFaceContourDetection(mImage2!!)
                 }
             }
             else {
-                Log.d(TAG, "dump image")
+//                Log.d(TAG, "dump image")
             }
         }, mCameraHandler)
     }
@@ -495,6 +500,7 @@ Log.d(TAG, "scaleX: "+scaleX)
 
     /** SAVE IMAGE **/
     private fun saveBitmapAsImage(context: Context, bitmap: Bitmap) {
+        Log.d("TEST2", "saveBitmapAsImage")
 //        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
 //        val fileName = "IMG_$timeStamp.jpg"
 //
@@ -545,7 +551,7 @@ Log.d(TAG, "scaleX: "+scaleX)
             Log.e(TAG, "FAIL TO detect")
             return
         }
-        Log.d(TAG, "Start detect" + mRotationCompensation)
+//        Log.d(TAG, "Start detect" + mRotationCompensation)
 
         val inputImage: InputImage = InputImage.fromMediaImage(image, 90) // rotation?
         val options: FaceDetectorOptions = FaceDetectorOptions.Builder()
@@ -558,8 +564,8 @@ Log.d(TAG, "scaleX: "+scaleX)
             .addOnSuccessListener { faces ->
                 if (!mFaceButton!!.isEnabled) {
                     for (face in faces) {
-                        Log.d("TEST2", "image: " +inputImage.width +"x"+inputImage.height+
-                                ",  face = [${face.boundingBox.left}~${face.boundingBox.right}, ${face.boundingBox.top}~${face.boundingBox.bottom}]" +
+                        Log.e(TAG, "image: " +inputImage.width +"x"+inputImage.height+
+                                ",  face = [左${face.boundingBox.left}~右${face.boundingBox.right}, 上${face.boundingBox.top}~下${face.boundingBox.bottom}]" +
                                 ", ${face.boundingBox.width()}x${face.boundingBox.height()}")
 
                         //The camera image received is in YUV YCbCr Format. Get buffers for each of the planes and use them to create a new bytearray defined by the size of all three buffers combined
@@ -572,17 +578,19 @@ Log.d(TAG, "scaleX: "+scaleX)
                         cameraPlaneV.get(compositeByteArray, cameraPlaneY.capacity(), cameraPlaneV.capacity())
 
                         val baOutputStream = ByteArrayOutputStream()
-                        val yuvImage: YuvImage = YuvImage(compositeByteArray, ImageFormat.NV21, image.width, image.height, null)
-                        yuvImage.compressToJpeg(Rect(
-                            if (face.boundingBox.left > 0 )face.boundingBox.left else 0,
-                            if (face.boundingBox.top > 0 ) face.boundingBox.top else 0,
-                            if (face.boundingBox.right > 0 ) face.boundingBox.right else image.width,
-                            if (face.boundingBox.bottom > 0 )face.boundingBox.bottom else image.height
-                        ), 75, baOutputStream)
+                        val yuvImage: YuvImage = YuvImage(compositeByteArray, ImageFormat.NV21, inputImage.width, inputImage.height, null)
+                        val rect = Rect(
+                            if (face.boundingBox.top > 0 )                      face.boundingBox.top else 0,
+                            if (face.boundingBox.right < inputImage.height )    inputImage.height - face.boundingBox.right else 0,
+                            if (face.boundingBox.bottom < inputImage.width )    face.boundingBox.bottom else inputImage.width,
+                            if (face.boundingBox.left > 0 )                     inputImage.height - face.boundingBox.left else inputImage.height,
+                        )
+                        yuvImage.compressToJpeg(rect, 75, baOutputStream)
+                        Log.d(TAG, "Rect: "+rect)
                         val byteForBitmap = baOutputStream.toByteArray()
                         val bitmapImage = BitmapFactory.decodeByteArray(byteForBitmap, 0, byteForBitmap.size)
                         if (bitmapImage != null) { // Check if the bitmap is not null
-                            Log.d("TEST2",
+                            Log.d(TAG,
                                 ", bitmap: "+bitmapImage.width+"x"+bitmapImage.height)
                             saveBitmapAsImage(this, bitmapImage)
                         } else {
@@ -592,13 +600,13 @@ Log.d(TAG, "scaleX: "+scaleX)
                     mFaceButton!!.isEnabled = true
                 }
 
-                Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+inputImage.width+", "+inputImage.height+")")
+//                Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+inputImage.width+", "+inputImage.height+")")
                 processFaceContourDetectionResult(faces);
 
                 if(image != null) {
                     image.close()
                     isDetecting = false
-                    Log.d(TAG, "close image")
+//                    Log.d(TAG, "close image")
                 }
                 else {
                     Log.d(TAG, "close image FAIL!! (mImage2 is null)")
@@ -626,6 +634,6 @@ Log.d(TAG, "scaleX: "+scaleX)
             faceGraphic.updateFace(face)
         }
 
-        Log.d(TAG, "Contour.........finish")
+//        Log.d(TAG, "Contour.........finish")
     }
 }

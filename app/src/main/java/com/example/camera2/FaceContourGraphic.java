@@ -58,7 +58,7 @@ public class FaceContourGraphic extends GraphicOverlay.Graphic {
     public void updateFace(Face face) {
         this.face = face;
         postInvalidate();
-        Log.d("test", "updateFace");
+//        Log.d("test", "updateFace");
     }
 
     /** Draws the face annotations for position on the supplied canvas. */
