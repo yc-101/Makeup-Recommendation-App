@@ -22,6 +22,12 @@ import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.*
+import org.opencv.android.BaseLoaderCallback
+import org.opencv.android.LoaderCallbackInterface
+import org.opencv.android.OpenCVLoader
+import org.opencv.android.Utils
+import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -95,11 +101,30 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         Log.d(TAG, "onResume")
+        if (!OpenCVLoader.initDebug()) {
+            OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_0_0, this, mLoaderCallback)
+        } else {
+            mLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS)
+        }
         startCameraThread()
         if (!mTextureView!!.isAvailable) {
             mTextureView!!.surfaceTextureListener = mTextureListener
         } else {
             startPreview()
+        }
+    }
+
+    // Loader for openCV
+    private val mLoaderCallback = object : BaseLoaderCallback(this) {
+        override fun onManagerConnected(status: Int) {
+            when (status) {
+                LoaderCallbackInterface.SUCCESS -> {
+// start here
+                }
+                else -> {
+                    super.onManagerConnected(status)
+                }
+            }
         }
     }
 
@@ -540,11 +565,23 @@ Log.d(TAG, "scaleX: "+scaleX)
 //        }
 
         // 显示照片到ImageView
-        mTempImageView?.setImageBitmap(bitmap)
+//        mTempImageView?.setImageBitmap(bitmap)
         mTempImageView?.visibility = View.VISIBLE
         mCloseButton?.visibility = View.VISIBLE
     }
 
+    private fun opencvMatToBitmap(mat: Mat): Bitmap{
+        val bitmap: Bitmap = Bitmap.createBitmap(mat.width(),mat.height(),Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(mat,bitmap)
+        return bitmap
+    }
+
+    private fun opencvBitmapToMat(bitmap: Bitmap): Mat{
+        val mat = Mat()
+        val newBitmap = bitmap.copy(Bitmap.Config.ARGB_8888,true)
+        Utils.bitmapToMat(newBitmap, mat)
+        return mat
+    }
     /** FACE DETECTOR **/
     private fun runFaceContourDetection(image: Image) {
         if(image == null) {
@@ -566,7 +603,7 @@ Log.d(TAG, "scaleX: "+scaleX)
                     for (face in faces) {
                         Log.e(TAG, "image: " +inputImage.width +"x"+inputImage.height+
                                 ",  face = [左${face.boundingBox.left}~右${face.boundingBox.right}, 上${face.boundingBox.top}~下${face.boundingBox.bottom}]" +
-                                ", ${face.boundingBox.width()}x${face.boundingBox.height()}")
+                                ", 寬${face.boundingBox.width()}x高${face.boundingBox.height()}")
 
                         //The camera image received is in YUV YCbCr Format. Get buffers for each of the planes and use them to create a new bytearray defined by the size of all three buffers combined
                         val cameraPlaneY = inputImage.planes?.get(0)!!.buffer!!
