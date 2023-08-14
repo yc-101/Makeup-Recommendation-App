@@ -20,8 +20,14 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
+import com.example.camera2.FaceMeshGraphic
+import com.example.camera2.FaceContourGraphic
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.*
+import com.google.mlkit.vision.facemesh.FaceMesh
+import com.google.mlkit.vision.facemesh.FaceMeshDetection
+import com.google.mlkit.vision.facemesh.FaceMeshDetector
+import com.google.mlkit.vision.facemesh.FaceMeshDetectorOptions
 import org.opencv.android.BaseLoaderCallback
 import org.opencv.android.LoaderCallbackInterface
 import org.opencv.android.OpenCVLoader
@@ -240,14 +246,15 @@ class MainActivity : Activity() {
         }
     }
 
+    // 要求權限、打開相機
     private fun openCamera() {
         val manager = getSystemService(CAMERA_SERVICE) as CameraManager
         var permissions:Array<String> = arrayOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE)
 
-        var num = 0
+        var requestCode = 22
         for(permission:String in permissions){
             if (ActivityCompat.checkSelfPermission(this, permission ) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(permissions, num++)
+                requestPermissions(permissions, requestCode)
                 return
             }
         }
@@ -565,7 +572,7 @@ Log.d(TAG, "scaleX: "+scaleX)
 //        }
 
         // 显示照片到ImageView
-//        mTempImageView?.setImageBitmap(bitmap)
+        mTempImageView?.setImageBitmap(bitmap)
         mTempImageView?.visibility = View.VISIBLE
         mCloseButton?.visibility = View.VISIBLE
     }
@@ -591,12 +598,18 @@ Log.d(TAG, "scaleX: "+scaleX)
 //        Log.d(TAG, "Start detect" + mRotationCompensation)
 
         val inputImage: InputImage = InputImage.fromMediaImage(image, 90) // rotation?
-        val options: FaceDetectorOptions = FaceDetectorOptions.Builder()
+        val options = FaceDetectorOptions.Builder()
+                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
+                .enableTracking()
 //            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
-            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
-            .build()
-        val detector: FaceDetector = FaceDetection.getClient(options)
+//            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
+                .build()
+//        val detector = FaceDetection.getClient(options)
+        val detector = FaceMeshDetection.getClient(
+            FaceMeshDetectorOptions.Builder()
+                .setUseCase(FaceMeshDetectorOptions.FACE_MESH) // BOUNDING_BOX_ONLY
+                .build()
+        )
         detector.process(inputImage)
             .addOnSuccessListener { faces ->
                 if (!mFaceButton!!.isEnabled) {
@@ -640,14 +653,8 @@ Log.d(TAG, "scaleX: "+scaleX)
 //                Log.d(TAG, "detecting........." + faces.size+", (w,h)=("+inputImage.width+", "+inputImage.height+")")
                 processFaceContourDetectionResult(faces);
 
-                if(image != null) {
-                    image.close()
-                    isDetecting = false
-//                    Log.d(TAG, "close image")
-                }
-                else {
-                    Log.d(TAG, "close image FAIL!! (mImage2 is null)")
-                }
+                image.close()
+                isDetecting = false
             }
 
             .addOnFailureListener { e ->
@@ -657,7 +664,7 @@ Log.d(TAG, "scaleX: "+scaleX)
             }
     }
 
-    private fun processFaceContourDetectionResult(faces: List<Face>) {
+    private fun processFaceContourDetectionResult(faces: List<FaceMesh>) { // List<Face>
         // Task completed successfully
         if (faces.size == 0) {
 //            showToast("No face found")
@@ -666,9 +673,10 @@ Log.d(TAG, "scaleX: "+scaleX)
         mGraphicOverlay?.clear()
         for (i in faces.indices) {
             val face = faces[i]
-            val faceGraphic = FaceContourGraphic(mGraphicOverlay)
+            val faceGraphic = // FaceContourGraphic(mGraphicOverlay, face)
+                FaceMeshGraphic(mGraphicOverlay, face)
             mGraphicOverlay?.add(faceGraphic)   // 畫偵測到的臉
-            faceGraphic.updateFace(face)
+//            faceGraphic.updateFace(face)
         }
 
 //        Log.d(TAG, "Contour.........finish")
