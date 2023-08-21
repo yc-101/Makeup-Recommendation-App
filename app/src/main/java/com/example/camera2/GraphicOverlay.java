@@ -177,6 +177,7 @@ public class GraphicOverlay extends View {
                 return;
             }
 
+            // 根據深度 給予不同顏色
             // When visualizeZ is true, sets up the paint to different colors based on z values.
             // Gets the range of z value.
             float zLowerBoundInScreenPixel;

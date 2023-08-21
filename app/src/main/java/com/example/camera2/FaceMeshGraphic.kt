@@ -25,6 +25,7 @@ import com.example.camera2.GraphicOverlay
 import com.google.mlkit.vision.facemesh.FaceMesh
 import com.google.mlkit.vision.facemesh.FaceMeshDetectorOptions
 import com.google.mlkit.vision.facemesh.FaceMeshPoint
+import kotlin.math.abs
 
 /**
  * Graphic instance for rendering face position and mesh info within the associated graphic overlay
@@ -34,10 +35,11 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 	GraphicOverlay.Graphic(overlay) {
 
 	private val positionPaint: Paint
-	private val boxPaint: Paint
+	private var boxPaint: Paint
 	private val useCase: Int
 	private var zMin: Float
 	private var zMax: Float
+	private var particularPoints: List<FaceMeshPoint>
 
 	@FaceMesh.ContourType
 	private val DISPLAY_CONTOURS =
@@ -68,7 +70,8 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 		rect.right = Math.max(x0, x1)
 		rect.top = translateY(rect.top)
 		rect.bottom = translateY(rect.bottom)
-		canvas.drawRect(rect, boxPaint)
+		faceIsSkewed(particularPoints)
+		canvas.drawRect(rect, boxPaint) /** 要先判斷臉的歪斜程度，再決定要畫 紅/黃/綠 色 **/
 
 		// Draw face mesh
 		val points =
@@ -84,7 +87,7 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 
 		// Draw face mesh points
 		for ((i, point) in points.withIndex()) {
-//      Log.d("test", "index: ${point.index}")
+//          Log.d("test", "index: ${point.index}")
 			updatePaintColorByZValue(
 				positionPaint,
 				canvas,
@@ -99,30 +102,23 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 				FACE_POSITION_RADIUS,
 				positionPaint
 			)
-//      canvas.drawText("${i}",
-//        translateX(point.position.x)+2,
-//        translateY(point.position.y),
-//        positionPaint)
+//          canvas.drawText("${i}",
+//              translateX(point.position.x)+2,
+//              translateY(point.position.y),
+//              positionPaint)
 		}
 
 		/** particular points to get face measure */
-		var testPoints = emptyList<Int>()
-		testPoints += listOf(
-			54, 284,  // 額頭
-			454, 234, // 顴骨
-			172, 397, // 下顎
-			5, 152    // 臉中心 底部 (用來算臉長)
-		)
-		for(testPoint in testPoints) {
+		for(point in particularPoints) {
 			canvas.drawCircle(
-				translateX(faceMesh.allPoints[testPoint].position.x),
-				translateY(faceMesh.allPoints[testPoint].position.y),
+				translateX(point.position.x),
+				translateY(point.position.y),
 				FACE_POSITION_RADIUS*3,
 				positionPaint
 			)
-			canvas.drawText("${faceMesh.allPoints[testPoint].index}",
-				translateX(faceMesh.allPoints[testPoint].position.x)+2,
-				translateY(faceMesh.allPoints[testPoint].position.y),
+			canvas.drawText("${point.index}",
+				translateX(point.position.x)+2,
+				translateY(point.position.y),
 				positionPaint)
 		}
 
@@ -165,6 +161,22 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 		return contourPoints
 	}
 
+	/** 若臉部太歪斜，要求把臉擺好 (Bounding Box變成黃色) **/
+	private fun faceIsSkewed(points: List<FaceMeshPoint>): Boolean {
+		// list陣列: 兩兩一對，分別是左右邊
+		var skew = kotlin.math.max(
+			abs(points[0].position.z - points[1].position.z + 55),
+			abs(points[2].position.z - points[3].position.z)
+		)
+		boxPaint.color =
+			if (skew <= 30 ) Color.GREEN
+			else if (skew <= 100) Color.YELLOW
+			else Color.RED
+		Log.d("test","上下: ${points[0].position.z - points[1].position.z + 55}, 左右: ${points[2].position.z - points[3].position.z}")
+
+		return (skew <= 30)
+	}
+
 	companion object {
 		private const val USE_CASE_CONTOUR_ONLY = 999
 		private const val FACE_POSITION_RADIUS = 2.0f // 畫網格的點
@@ -187,5 +199,11 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 		// PreferenceUtils.getFaceMeshUseCase(applicationContext)
 		zMin = java.lang.Float.MAX_VALUE
 		zMax = java.lang.Float.MIN_VALUE
+		particularPoints = listOf(
+			faceMesh.allPoints[5], faceMesh.allPoints[152],    // 臉中心 底部 (用來算臉長)
+			faceMesh.allPoints[54], faceMesh.allPoints[284],  // 額頭
+			faceMesh.allPoints[454], faceMesh.allPoints[234], // 顴骨
+			faceMesh.allPoints[172], faceMesh.allPoints[397], // 下顎
+		)
 	}
 }
