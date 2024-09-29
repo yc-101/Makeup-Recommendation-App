@@ -25,7 +25,7 @@ import com.example.camera2.GraphicOverlay
 import com.google.mlkit.vision.facemesh.FaceMesh
 import com.google.mlkit.vision.facemesh.FaceMeshDetectorOptions
 import com.google.mlkit.vision.facemesh.FaceMeshPoint
-import kotlin.math.abs
+import kotlin.math.*
 
 /**
  * Graphic instance for rendering face position and mesh info within the associated graphic overlay
@@ -39,39 +39,22 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 	private val useCase: Int
 	private var zMin: Float
 	private var zMax: Float
+	var canDetect: Boolean
 	private var particularPoints: List<FaceMeshPoint>
-
-	@FaceMesh.ContourType
-	private val DISPLAY_CONTOURS =
-		intArrayOf(
-			FaceMesh.FACE_OVAL,
-			FaceMesh.LEFT_EYEBROW_TOP,
-			FaceMesh.LEFT_EYEBROW_BOTTOM,
-			FaceMesh.RIGHT_EYEBROW_TOP,
-			FaceMesh.RIGHT_EYEBROW_BOTTOM,
-			FaceMesh.LEFT_EYE,
-			FaceMesh.RIGHT_EYE,
-			FaceMesh.UPPER_LIP_TOP,
-			FaceMesh.UPPER_LIP_BOTTOM,
-			FaceMesh.LOWER_LIP_TOP,
-			FaceMesh.LOWER_LIP_BOTTOM,
-			FaceMesh.NOSE_BRIDGE
-		)
 
 	/** Draws the face annotations for position on the supplied canvas. */
 	override fun draw(canvas: Canvas) {
-
 		// Draws the bounding box. 臉的框框
 		val rect = RectF(faceMesh.boundingBox)
 		// If the image is flipped, the left will be translated to right, and the right to left.
 		val x0 = translateX(rect.left)
 		val x1 = translateX(rect.right)
-		rect.left = Math.min(x0, x1)
-		rect.right = Math.max(x0, x1)
+		rect.left = x0.coerceAtMost(x1) // 取min
+		rect.right = x0.coerceAtLeast(x1) // 取max
 		rect.top = translateY(rect.top)
 		rect.bottom = translateY(rect.bottom)
-		faceIsSkewed(particularPoints)
-		canvas.drawRect(rect, boxPaint) /** 要先判斷臉的歪斜程度，再決定要畫 紅/黃/綠 色 **/
+		canDetect = faceIsSkewed(particularPoints) /** 要先判斷臉的歪斜程度，再決定要畫 紅/黃/綠 色 **/
+		canvas.drawRect(rect, boxPaint)
 
 		// Draw face mesh
 		val points =
@@ -81,18 +64,18 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 		zMin = Float.MAX_VALUE
 		zMax = Float.MIN_VALUE
 		for (point in points) {
-			zMin = Math.min(zMin, point.position.z)
-			zMax = Math.max(zMax, point.position.z)
+			zMin = zMin.coerceAtMost(point.position.z)  // 取min
+			zMax = zMax.coerceAtLeast(point.position.z) // 取max
 		}
 
 		// Draw face mesh points
-		for ((i, point) in points.withIndex()) {
+		for (point in points) {
 //          Log.d("test", "index: ${point.index}")
 			updatePaintColorByZValue(
 				positionPaint,
 				canvas,
-				/* visualizeZ= */true,
-				/* rescaleZForVisualization= */true,
+				/* visualizeZ = */true,
+				/* rescaleZForVisualization = */true,
 				point.position.z,
 				zMin,
 				zMax)
@@ -102,10 +85,6 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 				FACE_POSITION_RADIUS,
 				positionPaint
 			)
-//          canvas.drawText("${i}",
-//              translateX(point.position.x)+2,
-//              translateY(point.position.y),
-//              positionPaint)
 		}
 
 		/** particular points to get face measure */
@@ -133,6 +112,63 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 				drawLine(canvas, point2, point3)
 			}
 		}
+	}
+
+	fun getFaceShapeResult() :String {
+		if (!faceIsSkewed(particularPoints)) {
+			Log.d("test", "把臉擺正一點唷")
+			return "把臉擺正一點唷!"
+		}
+		/** 判斷臉型 */
+		val faceLength  = getDistance(particularPoints[0].position, particularPoints[1].position)
+		val forehead    = getDistance(particularPoints[2].position, particularPoints[3].position)
+		val cheekbones  = getDistance(particularPoints[4].position, particularPoints[5].position)
+		val jaw         = getDistance(particularPoints[6].position, particularPoints[7].position)
+		var longestPart = max(max(forehead, cheekbones), jaw)
+
+		var result = ""
+
+		// 1. 找出臉最寬的位置 ( 1前額 2頰骨 3下顎 )
+		result += when(longestPart) {
+			forehead -> '1'
+			cheekbones -> '2'
+			else -> '3'
+		}
+
+		// 2. 比較臉部長寬比 ( 1長>寬 2長=寬 )
+		result += if (faceLength / longestPart > 1.1) '1' else '2' //TODO: 差距要大多少?
+
+		// 3. 比較前額與下頜寬度 ( 1前額=下頜 2前額>下頜 3前額<下頜 )
+		result += if (forehead == jaw) '1' else if (forehead > jaw) '2' else '3'
+
+		// 4. 找出下巴形狀 ( 1尖 2方 3圓 )
+		val up = getDistance(particularPoints[8].position, particularPoints[9].position)
+		val left = getDistance(particularPoints[1].position, particularPoints[8].position)
+		val right = getDistance(particularPoints[1].position, particularPoints[9].position)
+		val cosValue = (left.pow(2) + right.pow(2) - up.pow(2)) / (2 * left * right)
+		result += if (cosValue > 0) '1' else if (cosValue > -1) '3' else '2' //TODO: 差距要大多少?
+
+		// 判斷臉型
+		var value = "你是"
+		value +=
+			if (result == "2111") "菱形臉" // 也是長形
+			else if (result == "1221" || result == "1222") "心形臉"
+			// "1***" or "3***"
+			else if (result[0] == '1' || result[0] == '3') {
+				if (result[1] == '1' || (result[2] == '1' && result[3] == '1')) "長形臉"
+				else "方形臉"
+			}
+			// "2***"
+			else if (result[1] == '1') "長形臉"
+			else if (result[2] == '3' || (result[2] == '1' && result[3] == '2')) "方形臉"
+			else if (result[3] == '3') "圓形臉"
+			else "橢圓形臉"
+		Log.d("test", value)
+		return value
+	}
+
+	private fun getDistance(point1: PointF3D, point2: PointF3D) :Float {
+		return sqrt((point1.x - point2.x).pow(2) + (point1.y - point2.y).pow(2))
 	}
 
 	private fun drawLine(canvas: Canvas, point1: PointF3D, point2: PointF3D) {
@@ -164,7 +200,7 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 	/** 若臉部太歪斜，要求把臉擺好 (Bounding Box變成黃色) **/
 	private fun faceIsSkewed(points: List<FaceMeshPoint>): Boolean {
 		// list陣列: 兩兩一對，分別是左右邊
-		var skew = kotlin.math.max(
+		val skew = kotlin.math.max(
 			abs(points[0].position.z - points[1].position.z + 55),
 			abs(points[2].position.z - points[3].position.z)
 		)
@@ -172,15 +208,31 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 			if (skew <= 30 ) Color.GREEN
 			else if (skew <= 100) Color.YELLOW
 			else Color.RED
-		Log.d("test","上下: ${points[0].position.z - points[1].position.z + 55}, 左右: ${points[2].position.z - points[3].position.z}")
+//		Log.d("test","上下: ${points[0].position.z - points[1].position.z + 55}, 左右: ${points[2].position.z - points[3].position.z}")
 
 		return (skew <= 30)
 	}
 
 	companion object {
 		private const val USE_CASE_CONTOUR_ONLY = 999
-		private const val FACE_POSITION_RADIUS = 2.0f // 畫網格的點
+		private const val FACE_POSITION_RADIUS = 2.0f // 畫網格的點粗細
 		private const val BOX_STROKE_WIDTH = 5.0f
+
+		private val DISPLAY_CONTOURS =
+			intArrayOf(
+				FaceMesh.FACE_OVAL,
+				FaceMesh.LEFT_EYEBROW_TOP,
+				FaceMesh.LEFT_EYEBROW_BOTTOM,
+				FaceMesh.RIGHT_EYEBROW_TOP,
+				FaceMesh.RIGHT_EYEBROW_BOTTOM,
+				FaceMesh.LEFT_EYE,
+				FaceMesh.RIGHT_EYE,
+				FaceMesh.UPPER_LIP_TOP,
+				FaceMesh.UPPER_LIP_BOTTOM,
+				FaceMesh.LOWER_LIP_TOP,
+				FaceMesh.LOWER_LIP_BOTTOM,
+				FaceMesh.NOSE_BRIDGE
+			)
 	}
 
 	init {
@@ -199,11 +251,13 @@ class FaceMeshGraphic(overlay: GraphicOverlay?, private val faceMesh: FaceMesh) 
 		// PreferenceUtils.getFaceMeshUseCase(applicationContext)
 		zMin = java.lang.Float.MAX_VALUE
 		zMax = java.lang.Float.MIN_VALUE
+		canDetect = false
 		particularPoints = listOf(
 			faceMesh.allPoints[5], faceMesh.allPoints[152],    // 臉中心 底部 (用來算臉長)
 			faceMesh.allPoints[54], faceMesh.allPoints[284],  // 額頭
 			faceMesh.allPoints[454], faceMesh.allPoints[234], // 顴骨
 			faceMesh.allPoints[172], faceMesh.allPoints[397], // 下顎
+			faceMesh.allPoints[150], faceMesh.allPoints[379], // 下巴
 		)
 	}
 }

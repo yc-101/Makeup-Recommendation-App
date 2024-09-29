@@ -10,36 +10,34 @@ import android.hardware.camera2.CameraCaptureSession.CaptureCallback
 import android.hardware.camera2.params.OutputConfiguration
 import android.media.Image
 import android.media.ImageReader
-import android.os.*
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
 import android.util.Log
 import android.util.Size
 import android.util.SparseIntArray
-import android.view.*
+import android.view.Surface
+import android.view.TextureView
 import android.view.TextureView.SurfaceTextureListener
+import android.view.View
+import android.view.Window
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
-import com.example.camera2.FaceMeshGraphic
-import com.example.camera2.FaceContourGraphic
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.face.*
 import com.google.mlkit.vision.facemesh.FaceMesh
 import com.google.mlkit.vision.facemesh.FaceMeshDetection
-import com.google.mlkit.vision.facemesh.FaceMeshDetector
 import com.google.mlkit.vision.facemesh.FaceMeshDetectorOptions
 import org.opencv.android.BaseLoaderCallback
 import org.opencv.android.LoaderCallbackInterface
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
 import org.opencv.core.Mat
-import org.opencv.imgproc.Imgproc
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
 import java.lang.Long
-import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.Array
 import kotlin.Boolean
@@ -49,8 +47,6 @@ import kotlin.Int
 import kotlin.String
 import kotlin.apply
 import kotlin.arrayOf
-import kotlin.collections.ArrayList
-import kotlin.let
 
 
 class MainActivity : Activity() {
@@ -107,6 +103,8 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         Log.d(TAG, "onResume")
+//        datasetTest()
+//        return
         if (!OpenCVLoader.initDebug()) {
             OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_0_0, this, mLoaderCallback)
         } else {
@@ -120,6 +118,25 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun datasetTest() {
+        val f = File("../../../..")// System.getProperty("user.home") + "/Desktop")//"D:\\Desktop\\專題")
+//    val f = File(getExternalFilesDir("../../../.." + "/Desktop/專題"), "dataset")
+        Log.d(TAG, "isDirectory: ${f.isDirectory}")
+        Log.d(TAG, "absolutePath: " + f.absolutePath)
+
+        val fileNames: MutableList<String> = mutableListOf()
+        val fileTree = f.walk()
+        fileTree
+             .maxDepth(2) //需遍历的目录层级为1，即无需检查子目录
+             .filter { it.isFile } //只挑选文件，不处理文件夹
+//             .filter { it.extension in listOf("png", "jpg", "txt") } //选择扩展名为png和jpg的图片文件
+            .forEach {
+                fileNames.add(it.name)
+                Log.d(TAG, "it :　${it.absoluteFile}")
+            } //循环处理符合条件的文件
+
+        Log.d(TAG, fileNames.toString())
+    }
     // Loader for openCV
     private val mLoaderCallback = object : BaseLoaderCallback(this) {
         override fun onManagerConnected(status: Int) {
@@ -176,7 +193,7 @@ class MainActivity : Activity() {
                 mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)
 //                mSensorOrientation = 0
                 //要取前鏡頭 => 若拿到後鏡頭，則不做動作
-                if (facing != null && cameraId != "/dev/video3")
+                if (facing != CameraCharacteristics.LENS_FACING_FRONT )//&& cameraId != "/dev/video3")
                     continue
 
                 // Get the device's current rotation relative to its "native" orientation.
@@ -247,14 +264,15 @@ class MainActivity : Activity() {
     }
 
     // 要求權限、打開相機
-    private fun openCamera() {
+    private fun openCamera(){
         val manager = getSystemService(CAMERA_SERVICE) as CameraManager
-        var permissions:Array<String> = arrayOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        var permissions:Array<String> = arrayOf(Manifest.permission.CAMERA)
 
         var requestCode = 22
         for(permission:String in permissions){
             if (ActivityCompat.checkSelfPermission(this, permission ) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(permissions, requestCode)
+                Log.d(TAG, "permission沒過: "+permission.toString())
                 return
             }
         }
@@ -307,6 +325,12 @@ class MainActivity : Activity() {
         val mSurfaceTexture = mTextureView!!.surfaceTexture
         mSurfaceTexture!!.setDefaultBufferSize(mPreviewSize!!.height, mPreviewSize!!.width)
 
+        if (mImageReader == null) {
+            Log.e(TAG, "mImageReader is null. Unable to start preview.")
+            return
+        }
+        setupImageReader()
+
         val previewSurface = Surface(mSurfaceTexture)
         try {
             Log.d("test","start Preview")
@@ -332,7 +356,6 @@ class MainActivity : Activity() {
             } else {
                 mCameraDevice!!.createCaptureSession(surfaces, mSessionCallback, mCameraHandler)
             }
-
         } catch (e: CameraAccessException) {
             e.printStackTrace()
         }
@@ -598,14 +621,17 @@ Log.d(TAG, "scaleX: "+scaleX)
 //        Log.d(TAG, "Start detect" + mRotationCompensation)
 
         val inputImage: InputImage = InputImage.fromMediaImage(image, 90) // rotation?
-        val options = FaceDetectorOptions.Builder()
+        /*
+        val detector = FaceDetection.getClient( // for class: faceContourGraphic (沒有網格，偵測較不精細)
+            FaceDetectorOptions.Builder()
                 .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
                 .enableTracking()
-//            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-//            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
+                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
                 .build()
-//        val detector = FaceDetection.getClient(options)
-        val detector = FaceMeshDetection.getClient(
+        )
+        */
+        val detector = FaceMeshDetection.getClient( // for class: faceMeshGraphic (有網格)
             FaceMeshDetectorOptions.Builder()
                 .setUseCase(FaceMeshDetectorOptions.FACE_MESH) // BOUNDING_BOX_ONLY
                 .build()
@@ -665,20 +691,18 @@ Log.d(TAG, "scaleX: "+scaleX)
     }
 
     private fun processFaceContourDetectionResult(faces: List<FaceMesh>) { // List<Face>
-        // Task completed successfully
+        // 把偵測到的臉拿去畫圖
+        mGraphicOverlay?.clear()
         if (faces.size == 0) {
-//            showToast("No face found")
+            showToast("No face found")
             return
         }
-        mGraphicOverlay?.clear()
         for (i in faces.indices) {
             val face = faces[i]
             val faceGraphic = // FaceContourGraphic(mGraphicOverlay, face)
-                FaceMeshGraphic(mGraphicOverlay, face)
+                FaceMeshGraphic(mGraphicOverlay, face) // 一個graphic代表一個face
             mGraphicOverlay?.add(faceGraphic)   // 畫偵測到的臉
-//            faceGraphic.updateFace(face)
+            showToast(faceGraphic.getFaceShapeResult())
         }
-
-//        Log.d(TAG, "Contour.........finish")
     }
 }
